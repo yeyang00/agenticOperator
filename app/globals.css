@@ -1,6 +1,48 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* ─── Tailwind v4 theme bridge ───────────────────────────────────────── *
+ * `inline` keeps Tailwind utilities pointing at runtime CSS variables
+ * (so [data-theme="dark"] flips instantly without a rebuild).
+ * Token values themselves live in :root / [data-theme="dark"] below.
+ * ─────────────────────────────────────────────────────────────────────── */
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-panel: var(--c-panel);
+  --color-raised: var(--c-raised);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+
+  --color-ink-1: var(--c-ink-1);
+  --color-ink-2: var(--c-ink-2);
+  --color-ink-3: var(--c-ink-3);
+  --color-ink-4: var(--c-ink-4);
+
+  --color-accent: var(--c-accent);
+  --color-accent-2: var(--c-accent-2);
+  --color-accent-bg: var(--c-accent-bg);
+  --color-accent-line: var(--c-accent-line);
+
+  --color-ok: var(--c-ok);
+  --color-ok-bg: var(--c-ok-bg);
+  --color-warn: var(--c-warn);
+  --color-warn-bg: var(--c-warn-bg);
+  --color-err: var(--c-err);
+  --color-err-bg: var(--c-err-bg);
+  --color-info: var(--c-info);
+  --color-info-bg: var(--c-info-bg);
+
+  --font-sans: "Inter", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --shadow-sh-1: var(--sh-1);
+  --shadow-sh-2: var(--sh-2);
+  --shadow-sh-3: var(--sh-3);
+}
 
 /* ===== Agentic Operator — shared design tokens ===== */
 :root {

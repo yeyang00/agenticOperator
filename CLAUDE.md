@@ -11,9 +11,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 There is no test suite configured.
 
+## Stack
+
+Next.js 16.2 (App Router · Turbopack default) · React 19.2 · Tailwind CSS v4.2 · TypeScript 5 · `engines.node: ">=22"`. No tests, no API routes.
+
 ## Architecture
 
-This is a frontend-only Next.js 14 (App Router) implementation of **Agentic Operator** — a control-plane UI for AI recruitment agents. All data is hard-coded mock data; there is no backend, API routes, or fetch layer.
+This is a frontend-only implementation of **Agentic Operator** — a control-plane UI for AI recruitment agents. All data is hard-coded mock data; there is no backend or fetch layer.
 
 ### Top-level shape
 
@@ -31,9 +35,11 @@ Routes implemented: `/fleet` (Direction A), `/workflow` (B), `/live` (C), `/even
 
 ### Design system — read this before styling anything
 
-Visual identity is defined as **OKLCH CSS variables in [app/globals.css](app/globals.css)**. Tailwind theme colors in [tailwind.config.ts](tailwind.config.ts) are *aliases* that read those variables (`bg: "var(--c-bg)"`, etc.). Dark mode is toggled by setting `data-theme="dark"` on `<html>` (managed by `AppProvider`); the dark block in `globals.css` redefines the same variable names.
+Visual identity is defined as **OKLCH CSS variables (`--c-*`) in [app/globals.css](app/globals.css)**. There is **no `tailwind.config.ts`** — Tailwind v4's config lives in CSS, in the `@theme inline { --color-bg: var(--c-bg); ... }` block at the top of `globals.css`. The `inline` keyword is load-bearing: it makes Tailwind utilities reference the runtime CSS variables instead of inlining literal values, so flipping `data-theme="dark"` on `<html>` recolors the entire app without a rebuild. The dark block in `globals.css` redefines the same `--c-*` variable names.
 
 Practical consequence: never hardcode colors. Use Tailwind utilities (`bg-surface`, `border-line`, `text-ink-1`, `text-ok`, `bg-accent-bg`) **or** inline `style={{ background: "var(--c-ok)" }}`. Both auto-respond to theme changes. The `oklch(...)` fragments scattered through page components (e.g. `oklch(0.5 0.14 75)` for the warn ink) are intentional — they're shades that don't have token slots and were copied 1:1 from the design references.
+
+When adding a new color/font/radius token: add it once under `@theme inline` (Tailwind utility binding) and once under `:root` + `[data-theme="dark"]` (light/dark values). PostCSS plugin is `@tailwindcss/postcss` (v4 — `tailwindcss` is no longer the PostCSS entry point).
 
 The atoms in [components/shared/atoms.tsx](components/shared/atoms.tsx) (`StatusDot`, `Spark`, `Metric`, `Badge`, `Btn`, `Card`, `CardHead`) and the `.tbl` class in `globals.css` cover ~all repeated chrome. Reach for those before inventing one-off styled divs.
 
