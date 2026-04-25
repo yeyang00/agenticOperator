@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agentic Operator · 智能体操作中枢</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=4">
+<style>
+  html, body { height: 100%; background: oklch(0.95 0.004 260); transition: background 0.3s ease; }
+  html[data-theme="dark"], html[data-theme="dark"] body { background: oklch(0.14 0.012 260); }
+  /* design canvas fills viewport */
+  body > div#root { height: 100%; }
+
+  /* canvas bg override in dark mode — design-canvas.jsx hardcodes its bg,
+     we dim it via a top layer, but the simplest fix is to override with CSS selector */
+  html[data-theme="dark"] [style*="#f0eee9"] { background-color: oklch(0.14 0.012 260) !important; }
+
+  /* soften the deep-navy "terminal" code blocks in light mode keep as-is,
+     but in dark mode let them adopt panel surface so they don't look out of place */
+  html[data-theme="dark"] pre[style*="oklch(0.22 0.01 260)"] {
+    background: var(--c-panel) !important;
+    color: var(--c-ink-1) !important;
+    border-color: var(--c-line) !important;
+  }
+  html[data-theme="dark"] pre[style*="oklch(0.22 0.01 260)"] > * { color: inherit !important; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="shared.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="direction-a-fleet.jsx"></script>
+<script type="text/babel" src="direction-b-workflow.jsx"></script>
+<script type="text/babel" src="direction-c-live.jsx"></script>
+<script type="text/babel" src="direction-d-events-detail.jsx"></script>
+<script type="text/babel" src="direction-d-events.jsx"></script>
+<script type="text/babel" src="page-alerts.jsx"></script>
+<script type="text/babel" src="page-datasources.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "dark": false,
+  "accent": "blue",
+  "density": "regular",
+  "mono": "jetbrains",
+  "liveStream": true,
+  "streamSpeed": 1.4,
+  "showDirectionTags": true,
+  "showCommandHint": true,
+  "lang": "zh"
+}/*EDITMODE-END*/;
+
+function AppShell() {
+  const [tw, setTw] = useTweaks(TWEAK_DEFAULTS);
+
+  // Apply theme / density / accent / mono to <html> so all artboards inherit
+  React.useEffect(() => {
+    const root = document.documentElement;
+    if (tw.dark) root.setAttribute("data-theme", "dark"); else root.removeAttribute("data-theme");
+    root.setAttribute("data-density", tw.density || "regular");
+    if (tw.accent && tw.accent !== "blue") root.setAttribute("data-accent", tw.accent);
+    else root.removeAttribute("data-accent");
+    root.setAttribute("data-mono", tw.mono || "jetbrains");
+  }, [tw.dark, tw.density, tw.accent, tw.mono]);
+
+  // Expose tweaks to children via a global context
+  return (
+    <TweakContext.Provider value={{ tw, setTw }}>
+      <LangProvider forcedLang={tw.lang === "auto" ? null : tw.lang}>
+        <DesignCanvas
+          title="Agentic Operator · 四种方向 · 4 Directions"
+          subtitle="AI 招聘自动化控制中枢 · Fleet · Orchestration · Live Ops · Event Bus"
+          initialZoom={0.46}
+        >
+          <DCSection
+            id="directions"
+            title="Agentic Operator · 招聘自动化"
+            subtitle="舰队指挥 · 工作流画布 · 实时运行剧场 · 事件中枢 — 四种并行设计方向"
+          >
+            <DCArtboard id="a-fleet" label="A · 舰队指挥  Fleet Command" width={1560} height={1000}>
+              <FleetCommandArtboard />
+            </DCArtboard>
+            <DCArtboard id="b-workflow" label="B · 工作流画布  Workflow Canvas" width={1560} height={1000}>
+              <WorkflowCanvasArtboard />
+            </DCArtboard>
+            <DCArtboard id="c-live" label="C · 实时运行剧场  Live Run Theatre" width={1560} height={1000}>
+              <LiveRunArtboard />
+            </DCArtboard>
+            <DCArtboard id="d-events" label="D · 事件中枢  Event Manager" width={1560} height={1000}>
+              <EventManagerArtboard />
+            </DCArtboard>
+          </DCSection>
+          <DCSection
+            id="ops-pages"
+            title="运营面板 · Operate Pages"
+            subtitle="独立顶级页面 — 告警 · 数据源"
+          >
+            <DCArtboard id="p-alerts" label="告警  Alerts" width={1560} height={1000}>
+              <AlertsPageArtboard />
+            </DCArtboard>
+            <DCArtboard id="p-datasources" label="数据源  Data Sources" width={1560} height={1000}>
+              <DataSourcesPageArtboard />
+            </DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+
+        <AOTweaksPanel tw={tw} setTw={setTw} />
+      </LangProvider>
+    </TweakContext.Provider>
+  );
+}
+
+// ---- global tweak context so deep children can read values ----
+const TweakContext = React.createContext({ tw: TWEAK_DEFAULTS, setTw: () => {} });
+window.TweakContext = TweakContext;
+window.useTweakContext = () => React.useContext(TweakContext);
+
+// ---- the Tweaks panel itself ----
+function AOTweaksPanel({ tw, setTw }) {
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection label="外观 · Appearance" />
+      <TweakToggle label="深色模式 · Dark mode" value={tw.dark}
+        onChange={(v) => setTw("dark", v)} />
+      <TweakRadio label="强调色 · Accent"
+        value={tw.accent}
+        options={[
+          { value: "blue",   label: "蓝" },
+          { value: "indigo", label: "靛" },
+          { value: "teal",   label: "青" },
+          { value: "rose",   label: "玫" },
+          { value: "amber",  label: "琥" },
+          { value: "lime",   label: "柠" },
+        ]}
+        onChange={(v) => setTw("accent", v)} />
+      <TweakRadio label="密度 · Density"
+        value={tw.density}
+        options={[
+          { value: "compact", label: "紧凑" },
+          { value: "regular", label: "标准" },
+          { value: "comfy",   label: "宽松" },
+        ]}
+        onChange={(v) => setTw("density", v)} />
+      <TweakRadio label="等宽字体 · Mono font"
+        value={tw.mono}
+        options={[
+          { value: "jetbrains", label: "JetBrains" },
+          { value: "ibm",       label: "IBM Plex" },
+          { value: "geistmono", label: "Geist" },
+        ]}
+        onChange={(v) => setTw("mono", v)} />
+
+      <TweakSection label="语言 · Language" />
+      <TweakRadio label="界面语言"
+        value={tw.lang}
+        options={[
+          { value: "auto", label: "Auto" },
+          { value: "zh",   label: "中文" },
+          { value: "en",   label: "EN" },
+        ]}
+        onChange={(v) => setTw("lang", v)} />
+
+      <TweakSection label="事件中枢 · Event Manager" />
+      <TweakToggle label="实时事件流 · Live stream"
+        value={tw.liveStream}
+        onChange={(v) => setTw("liveStream", v)} />
+      <TweakSlider label="事件节拍 · Stream tempo"
+        value={tw.streamSpeed}
+        min={0.3} max={3.5} step={0.1} unit="s"
+        onChange={(v) => setTw("streamSpeed", v)} />
+
+      <TweakSection label="画布标记 · Canvas marks" />
+      <TweakToggle label="方向标签 · Direction tags"
+        value={tw.showDirectionTags}
+        onChange={(v) => setTw("showDirectionTags", v)} />
+      <TweakToggle label="⌘K 提示 · Command hint"
+        value={tw.showCommandHint}
+        onChange={(v) => setTw("showCommandHint", v)} />
+    </TweaksPanel>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AppShell />);
+</script>
+</body>
+</html>

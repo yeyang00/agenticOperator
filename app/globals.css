@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Agentic Operator — shared design tokens ===== */
+:root {
+  /* neutrals (cool) */
+  --c-bg: oklch(0.99 0.004 255);
+  --c-surface: #ffffff;
+  --c-panel: oklch(0.985 0.004 255);
+  --c-raised: oklch(0.975 0.004 255);
+  --c-line: oklch(0.92 0.006 255);
+  --c-line-strong: oklch(0.86 0.008 255);
+  --c-ink-1: oklch(0.22 0.015 260);
+  --c-ink-2: oklch(0.42 0.012 260);
+  --c-ink-3: oklch(0.58 0.010 260);
+  --c-ink-4: oklch(0.72 0.008 260);
+
+  /* accents */
+  --c-accent: oklch(0.56 0.14 255);
+  --c-accent-2: oklch(0.66 0.11 255);
+  --c-accent-bg: oklch(0.96 0.03 255);
+  --c-accent-line: oklch(0.88 0.06 255);
+
+  /* semantic */
+  --c-ok: oklch(0.62 0.13 155);
+  --c-ok-bg: oklch(0.96 0.04 155);
+  --c-warn: oklch(0.74 0.15 75);
+  --c-warn-bg: oklch(0.96 0.06 80);
+  --c-err: oklch(0.58 0.19 25);
+  --c-err-bg: oklch(0.96 0.05 25);
+  --c-info: oklch(0.60 0.10 230);
+  --c-info-bg: oklch(0.96 0.03 230);
+
+  /* typography */
+  --f-sans: "Inter", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* radii */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  /* shadow */
+  --sh-1: 0 1px 0 rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --sh-2: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 20px -8px rgba(15, 23, 42, 0.10);
+  --sh-3: 0 12px 40px -12px rgba(15, 23, 42, 0.22);
+}
+
+[data-theme="dark"] {
+  --c-bg: oklch(0.17 0.012 260);
+  --c-surface: oklch(0.20 0.014 260);
+  --c-panel: oklch(0.235 0.014 260);
+  --c-raised: oklch(0.265 0.014 260);
+  --c-line: oklch(0.30 0.014 260);
+  --c-line-strong: oklch(0.40 0.014 260);
+
+  --c-ink-1: oklch(0.96 0.006 260);
+  --c-ink-2: oklch(0.82 0.010 260);
+  --c-ink-3: oklch(0.66 0.012 260);
+  --c-ink-4: oklch(0.50 0.012 260);
+
+  --c-accent: oklch(0.74 0.14 255);
+  --c-accent-2: oklch(0.66 0.11 255);
+  --c-accent-bg: color-mix(in oklab, oklch(0.74 0.14 255) 16%, transparent);
+  --c-accent-line: color-mix(in oklab, oklch(0.74 0.14 255) 40%, transparent);
+
+  --c-ok: oklch(0.78 0.13 155);
+  --c-ok-bg: color-mix(in oklab, oklch(0.78 0.13 155) 14%, transparent);
+  --c-warn: oklch(0.82 0.15 80);
+  --c-warn-bg: color-mix(in oklab, oklch(0.82 0.15 80) 14%, transparent);
+  --c-err: oklch(0.74 0.17 25);
+  --c-err-bg: color-mix(in oklab, oklch(0.74 0.17 25) 14%, transparent);
+  --c-info: oklch(0.78 0.10 230);
+  --c-info-bg: color-mix(in oklab, oklch(0.78 0.10 230) 14%, transparent);
+
+  --sh-1: 0 1px 0 rgba(0, 0, 0, 0.30), 0 1px 2px rgba(0, 0, 0, 0.30);
+  --sh-2: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 20px -8px rgba(0, 0, 0, 0.50);
+  --sh-3: 0 12px 40px -12px rgba(0, 0, 0, 0.70);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--f-sans);
+  color: var(--c-ink-1);
+  background: var(--c-bg);
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.anim-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ===== scrollbars ===== */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: oklch(0.88 0.008 260);
+  border-radius: 10px;
+  border: 2px solid var(--c-surface);
+}
+*::-webkit-scrollbar-track { background: transparent; }
+
+[data-theme="dark"] *::-webkit-scrollbar-thumb {
+  background: oklch(0.35 0.014 260);
+  border-color: var(--c-surface);
+}
+
+/* Tables */
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.tbl th {
+  text-align: left;
+  font: 500 10.5px var(--f-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-ink-4);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--c-line);
+  background: var(--c-panel);
+}
+.tbl td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--c-line);
+  color: var(--c-ink-1);
+  vertical-align: middle;
+}
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl tr:hover td { background: var(--c-panel); }
+.tbl .mono { font-family: var(--f-mono); font-size: 11px; color: var(--c-ink-2); }
+
+/* Spark bars */
+.sparkrow { display: flex; align-items: flex-end; gap: 2px; height: 28px; }
+.sparkrow .bar {
+  flex: 1;
+  background: var(--c-accent);
+  opacity: 0.25;
+  border-radius: 1px;
+  min-height: 2px;
+}
+.sparkrow .bar.hot { opacity: 0.9; }
+
+/* Helpers */
+.mono { font-family: var(--f-mono); }
+.muted { color: var(--c-ink-3); }
+.hint {
+  font-size: 10.5px;
+  color: var(--c-ink-4);
+  font-family: var(--f-mono);
+  letter-spacing: 0.02em;
+}
+.tabular-nums { font-feature-settings: "tnum", "lnum"; }

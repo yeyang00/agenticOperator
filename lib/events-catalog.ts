@@ -1,0 +1,184 @@
+export type EventKind = "trigger" | "domain" | "error" | "gate";
+
+export type EventDef = {
+  name: string;
+  stage: string;
+  kind: EventKind;
+  rate: number;
+  err: number;
+  desc: string;
+  publishers: string[];
+  subscribers: string[];
+  wf: string[];
+  emits: string[];
+  data: [string, string][];
+  mutations: string[];
+  selected?: boolean;
+};
+
+export const EVENT_CATALOG: EventDef[] = [
+  { name: "SCHEDULED_SYNC", stage: "system", kind: "trigger", rate: 6, err: 0, desc: "定时任务触发信号，驱动系统自动拉取客户 RMS 变更。",
+    publishers: ["cron.rms-sync"], subscribers: ["ReqSync"], wf: ["client-sync/v4"],
+    emits: ["REQUIREMENT_SYNCED", "SYNC_FAILED_ALERT"],
+    data: [["client_rms_system_id", "String"], ["sync_scope", "Array"], ["last_successful_sync_at", "String"], ["sync_frequency_minutes", "Integer"], ["is_full_sync", "Boolean"]], mutations: [] },
+  { name: "REQUIREMENT_LOGGED", stage: "requirement", kind: "domain", rate: 38, err: 0, desc: "外部需求已登记并结构化入库，触发 AI Agent 启动深度需求分析。",
+    publishers: ["ReqSync", "HSM·录入台"], subscribers: ["ReqAnalyzer"], wf: ["client→submit/v4.2"],
+    emits: ["ANALYSIS_COMPLETED", "ANALYSIS_BLOCKED"],
+    data: [["requirement_id", "String"], ["client_id", "String"], ["source_channel", "Enum"], ["raw_input_data", "Object"], ["is_urgent", "Boolean"]], mutations: [] },
+  { name: "REQUIREMENT_SYNCED", stage: "requirement", kind: "domain", rate: 214, err: 2, desc: "原始招聘需求已从客户系统同步，启动招聘生命周期。",
+    publishers: ["ReqSync"], subscribers: ["ReqAnalyzer", "AuditLogger"], wf: ["client→submit/v4.2"],
+    emits: ["REQUIREMENT_LOGGED", "ANALYSIS_BLOCKED"],
+    data: [["sync_result", "String"], ["synced_job_requisition_ids", "List<String>"]],
+    mutations: ["Job_Requisition_Specification", "Job_Requisition", "Client"] },
+  { name: "ANALYSIS_COMPLETED", stage: "requirement", kind: "domain", rate: 201, err: 0, desc: "需求深度分析完成，确定招聘策略、评估维度及是否需进一步澄清。",
+    publishers: ["ReqAnalyzer"], subscribers: ["JDGenerator", "MatchingPolicy"], wf: ["client→submit/v4.2"],
+    emits: ["JD_GENERATED", "CLARIFICATION_INCOMPLETE"],
+    data: [["requirement_id", "String"], ["complexity_score", "Float"], ["extracted_skills", "Array"], ["analysis_duration_ms", "Integer"], ["confidence_rating", "Float"]],
+    mutations: [], selected: true },
+  { name: "ANALYSIS_BLOCKED", stage: "requirement", kind: "error", rate: 4, err: 4, desc: "原始数据异常或关键规则缺失，需人工干预修复输入源。",
+    publishers: ["ReqAnalyzer"], subscribers: ["HSM·人工队列", "Alerting"], wf: ["human-clarify/v1"],
+    emits: ["CLARIFICATION_RETRY"],
+    data: [["degree_requirement", "String"], ["work_years", "Integer"], ["city", "String"], ["must_have_skills", "List<String>"]],
+    mutations: ["Job_Requisition", "Job_Requisition_Specification", "Client"] },
+  { name: "CLARIFICATION_INCOMPLETE", stage: "requirement", kind: "gate", rate: 18, err: 0, desc: "分析发现关键信息缺失或逻辑冲突，触发需求重新澄清流程。",
+    publishers: ["ReqAnalyzer"], subscribers: ["HSM·澄清助手"], wf: ["human-clarify/v1"],
+    emits: ["CLARIFICATION_RETRY"],
+    data: [["requirement_id", "String"], ["missing_fields", "Array"], ["clarification_reason", "String"], ["requester_id", "String"], ["urgency_level", "Enum"]], mutations: [] },
+  { name: "CLARIFICATION_RETRY", stage: "requirement", kind: "domain", rate: 14, err: 0, desc: "澄清结果已录入，驱动需求分析 Agent 根据新信息重新校验策略。",
+    publishers: ["HSM·澄清助手"], subscribers: ["ReqAnalyzer"], wf: ["human-clarify/v1"],
+    emits: ["ANALYSIS_COMPLETED", "ANALYSIS_BLOCKED"],
+    data: [["clarification_feedback", "String"]], mutations: ["Job_Requisition", "Communication_Log"] },
+  { name: "CLARIFICATION_READY", stage: "requirement", kind: "domain", rate: 82, err: 0, desc: "分析确认无待澄清项或澄清已闭环，进入 JD 生成阶段。",
+    publishers: ["HSM·澄清助手", "ReqAnalyzer"], subscribers: ["JDGenerator"], wf: ["client→submit/v4.2"],
+    emits: ["JD_GENERATED"],
+    data: [["clarification_status", "String"], ["must_have_skills", "List<String>"], ["nice_to_have_skills", "List<String>"], ["work_years", "Integer"], ["city", "String"]],
+    mutations: ["Job_Requisition", "Job_Requisition_Specification", "Communication_Log"] },
+
+  { name: "JD_GENERATED", stage: "jd", kind: "domain", rate: 74, err: 0, desc: "基于已确认的需求，系统自动生成的标准化 JD 已就绪，等待审核。",
+    publishers: ["JDGenerator"], subscribers: ["HSM·JD 审批台", "ComplianceLint"], wf: ["jd-review/v2"],
+    emits: ["JD_APPROVED", "JD_REJECTED"],
+    data: [["job_posting_id", "String"], ["jd_content", "String"]], mutations: ["Job_Posting"] },
+  { name: "JD_APPROVED", stage: "jd", kind: "domain", rate: 68, err: 0, desc: "JD 审核通过，正式触发招募任务分配与渠道发布流程。",
+    publishers: ["HSM·JD 审批台"], subscribers: ["Publisher", "TaskRouter"], wf: ["client→submit/v4.2"],
+    emits: ["CHANNEL_PUBLISHED", "CHANNEL_PUBLISHED_FAILED", "TASK_ASSIGNED"],
+    data: [["jd_id", "String"], ["approver_id", "String"], ["target_hiring_manager_id", "String"], ["headcount_total", "Integer"], ["is_confidential", "Boolean"]], mutations: [] },
+  { name: "JD_REJECTED", stage: "jd", kind: "gate", rate: 6, err: 0, desc: "生成的 JD 未通过审核，退回执行重新创建或需求修正。",
+    publishers: ["HSM·JD 审批台"], subscribers: ["JDGenerator", "ReqAnalyzer"], wf: ["jd-revise/v1"],
+    emits: ["JD_GENERATED"],
+    data: [["jd_id", "String"], ["rejector_id", "String"], ["rejection_reason_code", "Enum"], ["feedback_details", "String"], ["revision_number", "Integer"]], mutations: [] },
+  { name: "CHANNEL_PUBLISHED", stage: "jd", kind: "domain", rate: 240, err: 0, desc: "职位信息已在渠道上线，触发对应渠道简历自动收集机制。",
+    publishers: ["Publisher"], subscribers: ["ResumeCollector"], wf: ["collect-loop/v3"],
+    emits: ["RESUME_DOWNLOADED"],
+    data: [["channel_id", "String"], ["job_id", "String"], ["published_url", "String"], ["is_active", "Boolean"], ["expected_resume_volume", "Integer"]], mutations: [] },
+  { name: "CHANNEL_PUBLISHED_FAILED", stage: "jd", kind: "error", rate: 8, err: 8, desc: "JD 推送第三方招聘平台失败，需检查授权、规则或执行重试。",
+    publishers: ["Publisher"], subscribers: ["Alerting", "HSM·运营"], wf: ["publish-retry/v2"],
+    emits: [],
+    data: [["publish_result", "String"]],
+    mutations: ["Job_Posting", "Sourcing_Channel", "Employee"] },
+  { name: "TASK_ASSIGNED", stage: "jd", kind: "domain", rate: 52, err: 0, desc: "招募任务下发，触发系统职位发布或指引专员手动操作。",
+    publishers: ["TaskRouter"], subscribers: ["Publisher", "RecruiterInbox"], wf: ["client→submit/v4.2"],
+    emits: ["CHANNEL_PUBLISHED"],
+    data: [["task_id", "String"], ["assignee_id", "String"], ["job_id", "String"], ["due_date", "String"], ["task_priority", "Enum"]], mutations: [] },
+
+  { name: "RESUME_DOWNLOADED", stage: "resume", kind: "domain", rate: 3102, err: 4, desc: "简历已从招聘渠道采集并下载至系统暂存区，等待自动化处理。",
+    publishers: ["ResumeCollector"], subscribers: ["ResumeParser", "DupeChecker"], wf: ["collect-loop/v3"],
+    emits: ["RESUME_PROCESSED", "RESUME_PARSE_ERROR", "RESUME_LOCKED_CONFLICT"],
+    data: [["resume_file_paths", "List<String>"], ["job_requisition_id", "String"]],
+    mutations: ["Job_Requisition"] },
+  { name: "RESUME_PROCESSED", stage: "resume", kind: "domain", rate: 2802, err: 0, desc: "简历解析已完成（或人工修复），结构化数据准备进入匹配环节。",
+    publishers: ["ResumeParser"], subscribers: ["Matcher", "KG.index"], wf: ["client→submit/v4.2"],
+    emits: ["MATCH_PASSED_NEED_INTERVIEW", "MATCH_PASSED_NO_INTERVIEW", "MATCH_FAILED"],
+    data: [["fix_result", "String"]], mutations: ["Resume", "Candidate"] },
+  { name: "RESUME_PARSE_ERROR", stage: "resume", kind: "error", rate: 46, err: 46, desc: "系统无法自动解析简历内容或格式，触发人工修复流程。",
+    publishers: ["ResumeParser"], subscribers: ["HSM·修复台", "Alerting"], wf: ["resume-fix/v1"],
+    emits: ["RESUME_PROCESSED"],
+    data: [["candidate_id", "String"], ["resume_file_url", "String"], ["error_code", "Enum"], ["error_message", "String"], ["parsing_engine_version", "String"]], mutations: [] },
+  { name: "RESUME_INFO_MISSING", stage: "resume", kind: "gate", rate: 112, err: 0, desc: "解析发现关键核心字段缺失，无法满足匹配要求。",
+    publishers: ["ResumeParser"], subscribers: ["HSM·补全台"], wf: ["resume-enrich/v1"],
+    emits: ["RESUME_PROCESSED"],
+    data: [["candidate_id", "String"], ["resume_id", "String"], ["process_status", "String"]],
+    mutations: ["Candidate", "Resume"] },
+  { name: "RESUME_LOCKED_CONFLICT", stage: "resume", kind: "error", rate: 18, err: 18, desc: "处理时检测到唯一性归属冲突，当前流程中止。",
+    publishers: ["DupeChecker"], subscribers: ["HSM·仲裁台"], wf: ["lock-arbitrate/v1"],
+    emits: [],
+    data: [["candidate_id", "String"], ["resume_id", "String"], ["process_status", "String"]],
+    mutations: ["Candidate", "Resume"] },
+
+  { name: "MATCH_PASSED_NEED_INTERVIEW", stage: "match", kind: "domain", rate: 214, err: 0, desc: "候选人通过初步匹配，需触发 AI 面试邀请流程。",
+    publishers: ["Matcher"], subscribers: ["InterviewScheduler"], wf: ["client→submit/v4.2"],
+    emits: ["INTERVIEW_INVITATION_SENT"],
+    data: [["candidate_id", "String"], ["job_id", "String"], ["matching_score", "Float"], ["matched_reason_highlights", "Array"], ["interview_priority", "Enum"]], mutations: [] },
+  { name: "MATCH_PASSED_NO_INTERVIEW", stage: "match", kind: "domain", rate: 31, err: 0, desc: "简历通过高精度匹配且符合直接推荐规则，跳过面试进入推荐包封装。",
+    publishers: ["Matcher"], subscribers: ["PackageBuilder"], wf: ["fast-track/v1"],
+    emits: ["PACKAGE_GENERATED"],
+    data: [["match_results", "List<JSON>"], ["overall_status", "String"]],
+    mutations: ["Candidate", "Resume", "Job_Requisition"] },
+  { name: "MATCH_FAILED", stage: "match", kind: "gate", rate: 1986, err: 0, desc: "候选人未通过硬性门槛（黑名单/技能缺项），匹配流程自动关闭。",
+    publishers: ["Matcher"], subscribers: ["Archiver", "KG.reject-reason"], wf: ["archive/v1"],
+    emits: [],
+    data: [["match_results", "List<JSON>"], ["overall_status", "String"]],
+    mutations: ["Candidate", "Application"] },
+
+  { name: "INTERVIEW_INVITATION_SENT", stage: "interview", kind: "domain", rate: 214, err: 0, desc: "AI 面试邀请已通过指定渠道发送给候选人，驱动面试执行环节。",
+    publishers: ["InterviewScheduler"], subscribers: ["AIInterviewer", "NotificationSvc"], wf: ["client→submit/v4.2"],
+    emits: ["AI_INTERVIEW_COMPLETED"],
+    data: [["interview_id", "String"], ["candidate_email", "String"], ["scheduled_start_time", "String"], ["interviewer_ids", "Array"], ["meeting_link", "String"]], mutations: [] },
+  { name: "AI_INTERVIEW_COMPLETED", stage: "interview", kind: "domain", rate: 88, err: 0, desc: "候选人已完成 AI 面试，系统记录数据并准备生成评估报告。",
+    publishers: ["AIInterviewer"], subscribers: ["Evaluator", "RecordingStore"], wf: ["client→submit/v4.2"],
+    emits: ["EVALUATION_PASSED", "EVALUATION_FAILED"],
+    data: [["interview_completed", "Boolean"]],
+    mutations: ["Interview_Record", "Candidate"] },
+
+  { name: "EVALUATION_PASSED", stage: "eval", kind: "domain", rate: 64, err: 0, desc: "AI 面试评估完成且符合岗位能力模型，转入推荐环节。",
+    publishers: ["Evaluator"], subscribers: ["PackageBuilder"], wf: ["client→submit/v4.2"],
+    emits: ["PACKAGE_GENERATED"],
+    data: [["evaluation_report_id", "String"], ["evaluation_result", "String"]],
+    mutations: ["Evaluation_Report"] },
+  { name: "EVALUATION_FAILED", stage: "eval", kind: "gate", rate: 24, err: 0, desc: "评估检测到严重不符项或评分低于阈值，自动终止该候选人流程。",
+    publishers: ["Evaluator"], subscribers: ["Archiver"], wf: ["archive/v1"],
+    emits: [],
+    data: [["evaluation_report_id", "String"]],
+    mutations: ["Application", "Candidate"] },
+
+  { name: "PACKAGE_GENERATED", stage: "package", kind: "domain", rate: 64, err: 0, desc: "包含优化简历、评价及综合报告的推荐包已生成，进入待审状态。",
+    publishers: ["PackageBuilder"], subscribers: ["HSM·推荐包审批"], wf: ["package-approval/v2"],
+    emits: ["PACKAGE_APPROVED"],
+    data: [["recommendation_material_id", "String"], ["package_status", "String"]],
+    mutations: ["Recommendation_Material"] },
+  { name: "PACKAGE_APPROVED", stage: "package", kind: "domain", rate: 58, err: 0, desc: "推荐包通过内部审核，获准执行向客户系统的最终提交动作。",
+    publishers: ["HSM·推荐包审批"], subscribers: ["PortalSubmitter"], wf: ["client→submit/v4.2"],
+    emits: ["APPLICATION_SUBMITTED", "SUBMISSION_FAILED"],
+    data: [["package_id", "String"], ["candidate_id", "String"], ["approver_user_id", "String"], ["target_client_portal_id", "String"], ["approval_timestamp", "String"]], mutations: [] },
+
+  { name: "APPLICATION_SUBMITTED", stage: "submit", kind: "domain", rate: 58, err: 0, desc: "推荐包已成功提交客户系统或门户，完成关键交付动作。",
+    publishers: ["PortalSubmitter"], subscribers: ["KG.outcome", "AuditLogger", "ClientNotifier"], wf: ["client→submit/v4.2"],
+    emits: [],
+    data: [["submission_result", "String"]],
+    mutations: ["Application", "Candidate"] },
+  { name: "SUBMISSION_FAILED", stage: "submit", kind: "error", rate: 3, err: 3, desc: "向客户系统提交推荐包时发生异常，需触发重试或转人工处理。",
+    publishers: ["PortalSubmitter"], subscribers: ["Alerting", "HSM·提交台"], wf: ["submit-retry/v1"],
+    emits: [],
+    data: [["submission_result", "String"]],
+    mutations: ["Application", "Job_Requisition", "Client"] },
+];
+
+export const STAGE_LABELS: Record<string, string> = {
+  requirement: "eg_requirement",
+  jd: "eg_jd",
+  resume: "eg_resume",
+  match: "eg_match",
+  interview: "eg_interview",
+  eval: "eg_eval",
+  package: "eg_package",
+  submit: "eg_submit",
+  system: "eg_system",
+};
+
+export function kindDot(kind: EventKind): string {
+  switch (kind) {
+    case "error": return "var(--c-err)";
+    case "gate": return "oklch(0.5 0.14 75)";
+    case "trigger": return "var(--c-info)";
+    default: return "var(--c-ok)";
+  }
+}
