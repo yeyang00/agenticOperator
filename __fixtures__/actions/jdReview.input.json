@@ -1,0 +1,40 @@
+{
+  "object_type": "action",
+  "actor_json": "[\"Human\"]",
+  "description": "JD审核 - 交付经理审核AI生成的职位描述，确认内容准确无误后批准发布",
+  "side_effects_json": "{\"data_changes\":[{\"object_type\":\"Job_Posting\",\"action\":\"MODIFY\",\"property_impacted\":[\"publish_status\"],\"description\":\"审核通过时publish_status更新为\\\"已审核\\\"；驳回时更新为\\\"需修改\\\"。\"}],\"notifications\":[]}",
+  "inputs_json": "[{\"name\":\"job_posting_id\",\"type\":\"String\",\"description\":\"待审核的岗位发布信息唯一编号。\",\"source_object\":\"Job_Posting.job_posting_id\",\"required\":true}]",
+  "target_objects_json": "[\"Job_Posting\"]",
+  "trigger_json": "[\"JD_GENERATED\"]",
+  "domainId": "RAAS-v1",
+  "triggered_event_json": "[\"JD_APPROVED\",\"JD_REJECTED\"]",
+  "name": "jdReview",
+  "id": "5",
+  "category": "人工操作",
+  "outputs_json": "[{\"name\":\"review_result\",\"type\":\"String\",\"description\":\"审核结果。值为\\\"approved\\\"(通过)或\\\"rejected\\\"(驳回，需附修改意见)。\"}]",
+  "action_steps": [
+    {
+      "rules": [],
+      "artifactType": "ActionStep",
+      "object_type": "action",
+      "displayName": "审核职位描述",
+      "index": 0,
+      "rules_json": "[]",
+      "description": "交付经理审核AI生成的职位描述，确认岗位职责、任职要求、薪资范围等信息准确无误后批准发布。若发现问题则驳回并附修改意见。",
+      "parentActionId": "5",
+      "inputs_json": "[{\"name\":\"job_posting_id\",\"type\":\"String\",\"description\":\"岗位发布信息编号。\",\"source_object\":\"Job_Posting.job_posting_id\"}]",
+      "rawJson": "{\"action_id\":\"5\",\"object_type\":\"action\",\"name\":\"审核职位描述\",\"index\":0,\"rules_json\":\"[]\",\"description\":\"交付经理审核AI生成的职位描述，确认岗位职责、任职要求、薪资范围等信息准确无误后批准发布。若发现问题则驳回并附修改意见。\",\"inputs_json\":\"[{\\\"name\\\":\\\"job_posting_id\\\",\\\"type\\\":\\\"String\\\",\\\"description\\\":\\\"岗位发布信息编号。\\\",\\\"source_object\\\":\\\"Job_Posting.job_posting_id\\\"}]\",\"domainId\":\"RAAS-v1\",\"order\":\"1\",\"outputs_json\":\"[{\\\"name\\\":\\\"review_result\\\",\\\"type\\\":\\\"String\\\",\\\"description\\\":\\\"审核结果。\\\"}]\"}",
+      "domainId": "RAAS-v1",
+      "objectType": "action",
+      "managedBy": "links-builder",
+      "action_id": "5",
+      "name": "审核职位描述",
+      "id": "5::审核职位描述",
+      "outputs_json": "[{\"name\":\"review_result\",\"type\":\"String\",\"description\":\"审核结果。\"}]",
+      "order": "1"
+    }
+  ],
+  "rules": [],
+  "ruleCount": 0,
+  "userPrompt": "# Ontology rules for Action jdReview (5)\n\nUse the following ontology rules as the decision framework for this action call. Cite rule ids when explaining decisions, and do not invent rules that are not listed here.\n\n## Action\n- id: 5\n- name: jdReview\n- description: JD审核 - 交付经理审核AI生成的职位描述，确认内容准确无误后批准发布\n\n## Action steps and rules\n\n### Step 1: 审核职位描述\n- step_id: 5::审核职位描述\n- description: 交付经理审核AI生成的职位描述，确认岗位职责、任职要求、薪资范围等信息准确无误后批准发布。若发现问题则驳回并附修改意见。\n- rules: none\n\n## Total rules: 0"
+}

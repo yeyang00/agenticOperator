@@ -1,0 +1,40 @@
+{
+  "object_type": "action",
+  "actor_json": "[\"Human\"]",
+  "description": "人工需求录入 - 交付经理或招聘专员在RAAS系统中手动创建和录入客户招聘需求信息，包括岗位名称、职级要求、招聘人数、工作城市等核心字段。录入完成后触发需求分析流程。",
+  "side_effects_json": "{\"data_changes\":[{\"object_type\":\"Job_Requisition_Specification\",\"action\":\"CREATE\",\"property_impacted\":[\"job_requisition_specification_id\",\"client_id\",\"start_date\",\"deadline\",\"create_time\",\"create_by\",\"status\"],\"description\":\"创建外包招聘需求记录。\"},{\"object_type\":\"Job_Requisition\",\"action\":\"CREATE\",\"property_impacted\":[\"job_requisition_id\",\"job_requisition_specification_id\",\"client_job_title\",\"job_responsibility\",\"job_requirement\",\"headcount\",\"city\",\"salary_range\",\"work_years\",\"degree_requirement\"],\"description\":\"创建招聘岗位记录并写入HSM手动录入的岗位核心信息。\"}],\"notifications\":[]}",
+  "inputs_json": "[{\"name\":\"client_id\",\"type\":\"String\",\"description\":\"目标客户的唯一编号。用于关联新建的招聘需求至对应客户。\",\"source_object\":\"Client.client_id\",\"required\":true},{\"name\":\"job_details\",\"type\":\"JSON\",\"description\":\"HSM手动填写的岗位信息，包括岗位名称/职责/要求/人数/城市/薪资范围等核心字段。\",\"source_object\":\"\",\"required\":true}]",
+  "trigger_json": "[]",
+  "target_objects_json": "[\"Job_Requisition_Specification\",\"Job_Requisition\",\"Client\"]",
+  "domainId": "RAAS-v1",
+  "triggered_event_json": "[\"REQUIREMENT_LOGGED\"]",
+  "name": "manualEntry",
+  "id": "1-2",
+  "category": "人工操作",
+  "outputs_json": "[{\"name\":\"job_requisition_id\",\"type\":\"String\",\"description\":\"新创建的招聘岗位唯一编号。\"},{\"name\":\"job_requisition_specification_id\",\"type\":\"String\",\"description\":\"新创建的外包招聘需求唯一编号。\"}]",
+  "action_steps": [
+    {
+      "rules": [],
+      "artifactType": "ActionStep",
+      "object_type": "action",
+      "displayName": "手动录入需求",
+      "index": 0,
+      "rules_json": "[]",
+      "description": "交付经理或招聘专员在RAAS系统中手动填写客户招聘需求信息，包括岗位名称、职级要求、招聘人数、工作城市、薪资范围、岗位职责、岗位要求等字段，系统创建Job_Requisition_Specification和Job_Requisition记录。",
+      "parentActionId": "1-2",
+      "inputs_json": "[{\"name\":\"client_id\",\"type\":\"String\",\"description\":\"目标客户编号。\",\"source_object\":\"Client.client_id\"},{\"name\":\"job_details\",\"type\":\"JSON\",\"description\":\"岗位核心信息。\",\"source_object\":\"\"}]",
+      "rawJson": "{\"action_id\":\"1-2\",\"object_type\":\"action\",\"name\":\"手动录入需求\",\"index\":0,\"rules_json\":\"[]\",\"description\":\"交付经理或招聘专员在RAAS系统中手动填写客户招聘需求信息，包括岗位名称、职级要求、招聘人数、工作城市、薪资范围、岗位职责、岗位要求等字段，系统创建Job_Requisition_Specification和Job_Requisition记录。\",\"inputs_json\":\"[{\\\"name\\\":\\\"client_id\\\",\\\"type\\\":\\\"String\\\",\\\"description\\\":\\\"目标客户编号。\\\",\\\"source_object\\\":\\\"Client.client_id\\\"},{\\\"name\\\":\\\"job_details\\\",\\\"type\\\":\\\"JSON\\\",\\\"description\\\":\\\"岗位核心信息。\\\",\\\"source_object\\\":\\\"\\\"}]\",\"domainId\":\"RAAS-v1\",\"order\":\"1\",\"outputs_json\":\"[{\\\"name\\\":\\\"job_requisition_id\\\",\\\"type\\\":\\\"String\\\",\\\"description\\\":\\\"创建的招聘岗位编号。\\\"},{\\\"name\\\":\\\"job_requisition_specification_id\\\",\\\"type\\\":\\\"String\\\",\\\"description\\\":\\\"创建的外包招聘需求编号。\\\"}]\"}",
+      "domainId": "RAAS-v1",
+      "objectType": "action",
+      "managedBy": "links-builder",
+      "action_id": "1-2",
+      "name": "手动录入需求",
+      "id": "1-2::手动录入需求",
+      "outputs_json": "[{\"name\":\"job_requisition_id\",\"type\":\"String\",\"description\":\"创建的招聘岗位编号。\"},{\"name\":\"job_requisition_specification_id\",\"type\":\"String\",\"description\":\"创建的外包招聘需求编号。\"}]",
+      "order": "1"
+    }
+  ],
+  "rules": [],
+  "ruleCount": 0,
+  "userPrompt": "# Ontology rules for Action manualEntry (1-2)\n\nUse the following ontology rules as the decision framework for this action call. Cite rule ids when explaining decisions, and do not invent rules that are not listed here.\n\n## Action\n- id: 1-2\n- name: manualEntry\n- description: 人工需求录入 - 交付经理或招聘专员在RAAS系统中手动创建和录入客户招聘需求信息，包括岗位名称、职级要求、招聘人数、工作城市等核心字段。录入完成后触发需求分析流程。\n\n## Action steps and rules\n\n### Step 1: 手动录入需求\n- step_id: 1-2::手动录入需求\n- description: 交付经理或招聘专员在RAAS系统中手动填写客户招聘需求信息，包括岗位名称、职级要求、招聘人数、工作城市、薪资范围、岗位职责、岗位要求等字段，系统创建Job_Requisition_Specification和Job_Requisition记录。\n- rules: none\n\n## Total rules: 0"
+}
