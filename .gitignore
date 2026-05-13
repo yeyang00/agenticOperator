@@ -60,3 +60,6 @@ logs/
 
 # package manager
 package-lock.json.bak
+
+# simple-rule-check runtime data (audit traces)
+data/simple-rule-check-runs/
