@@ -110,11 +110,25 @@ function printPretty(batch: import("../lib/rule-check").RuleCheckBatchRunAudited
   if (agg.triggeredRules.length > 0) {
     process.stdout.write(`  Triggered rules: ${agg.triggeredRules.join(", ")}\n`);
   }
-  process.stdout.write(
-    `\nLLM:   model=${batch.llmRaw.model}  in=${batch.llmRaw.inputTokens}tok  out=${batch.llmRaw.outputTokens}tok  latency=${batch.llmRaw.latencyMs}ms\n`,
-  );
-  process.stdout.write(`Prompt sha256:        ${batch.promptProvenance.promptSha256.slice(0, 16)}…\n`);
-  process.stdout.write(`ActionObject sha256:  ${batch.promptProvenance.actionObjectSha256.slice(0, 16)}…\n`);
+  if (agg.terminal) {
+    process.stdout.write(`  ↯ short-circuit @ step ${agg.terminalAtStep ?? "?"} — 后续 step 跳过 LLM 调用\n`);
+  }
+
+  // Per-step LLM call summary (Path C).
+  process.stdout.write(`\nLLM calls (per step):\n`);
+  for (const sc of batch.stepCalls) {
+    if (sc.shortCircuited) {
+      process.stdout.write(`  ${sc.stepKey.padEnd(8)} SKIPPED (short-circuit)\n`);
+      continue;
+    }
+    const raw = sc.llmRaw;
+    process.stdout.write(
+      `  ${sc.stepKey.padEnd(8)} model=${raw?.model ?? "?"}  in=${raw?.inputTokens ?? 0}tok  out=${raw?.outputTokens ?? 0}tok  latency=${raw?.latencyMs ?? 0}ms` +
+      (sc.promptProvenance ? `  promptSha=${sc.promptProvenance.promptSha256.slice(0, 12)}…` : "") +
+      (sc.triggeredShortCircuit ? `  ↯ triggered by rule ${sc.triggeredShortCircuit.byRuleId}` : "") +
+      `\n`,
+    );
+  }
   process.stdout.write(`Ontology API calls:   ${batch.ontologyApiTrace.length}\n`);
 
   process.stdout.write(`\nPer-rule results (${batch.results.length}):\n`);

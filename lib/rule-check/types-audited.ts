@@ -160,6 +160,45 @@ export interface RuleCheckRunAudited {
 export interface BatchAggregateDecision {
   decision: RuleDecision;
   triggeredRules: string[];
+  /**
+   * True when a `canBlock !== false` rule was `blocked` in some step, causing
+   * subsequent steps to skip their LLM call (Path C short-circuit). Replaces
+   * the previously LLM-claimed `final_output.terminal` field — orchestrator
+   * derives this deterministically.
+   */
+  terminal: boolean;
+  /** When `terminal === true`, the stepOrder that triggered the short-circuit. */
+  terminalAtStep?: number;
+}
+
+/**
+ * Per-step audit entry for Path C (per-step sequential LLM calls).
+ *
+ * The orchestrator emits one `StepCallRecord` per step in `actionSteps` that
+ * has `rules.length > 0`, in execution order. Skipped steps (after a
+ * short-circuit) still appear as elements but with `shortCircuited: true` and
+ * `llmRaw / promptProvenance: null` — order semantics are preserved and the
+ * audit explicitly records the "this step was decided not to run" event.
+ */
+export interface StepCallRecord {
+  /** matchResume step order (1, 2, 3, …) */
+  stepOrder: number;
+  /** Stable key — "step_<order>" (matches envelope's `step_results` keys). */
+  stepKey: string;
+  /** True when this step was skipped due to an earlier short-circuit. */
+  shortCircuited: boolean;
+  /** ISO-8601 when the LLM call started; null when shortCircuited. */
+  startedAt: string | null;
+  /** null when shortCircuited. */
+  llmRaw: LLMRawResponse | null;
+  /** null when shortCircuited. */
+  promptProvenance: PromptProvenance | null;
+  /** Present only on the step that TRIGGERED a short-circuit. */
+  triggeredShortCircuit?: {
+    byRuleId: string;
+    /** Currently always `"canBlock+blocked"`; future short-circuit reasons can extend the union. */
+    reason: "canBlock+blocked";
+  };
 }
 
 export interface RuleCheckBatchRunAudited {
@@ -167,10 +206,15 @@ export interface RuleCheckBatchRunAudited {
   timestamp: string;
   input: CheckRulesInput;
   results: RuleCheckRunAudited[];
+  /** Deterministic aggregate derived from `results[*].finalDecision.decision`. Source of truth. */
   aggregateDecision: BatchAggregateDecision;
-  /** Shared across all `results[*]`: the single LLM call this batch made. */
-  llmRaw: LLMRawResponse;
-  promptProvenance: PromptProvenance;
+  /**
+   * Per-step LLM call audit (Path C). One entry per executed-or-skipped step
+   * in ascending `stepOrder`. Per-rule `RuleCheckRunAudited` records
+   * denormalize their step's prompt / llmRaw / promptProvenance so per-rule
+   * replay stays self-contained without joining against this array.
+   */
+  stepCalls: StepCallRecord[];
   /** Same trace shared by all results, kept once at the batch level. */
   ontologyApiTrace: OntologyApiTraceEntry[];
   auditPath?: string;

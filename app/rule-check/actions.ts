@@ -1,0 +1,135 @@
+"use server";
+
+/**
+ * Server actions for the commercial `/rule-check/*` UI.
+ *
+ * Pattern matches `app/dev/simple-rule-check/actions.ts`: types are
+ * DECLARED LOCALLY — re-exporting types via `export type { ... } from ...`
+ * breaks Next.js 16's Turbopack "use server" transform with runtime
+ * ReferenceErrors. The shapes below mirror the internal declarations in
+ * `lib/rule-check/server-actions.ts` (that file is the source of truth
+ * for the implementation; keep these in sync manually).
+ *
+ * `getRunDetail` is intentionally NOT re-exported — the run-detail page
+ * invokes it server-side directly to keep the full audit JSON off the
+ * client wire when not requested.
+ */
+
+import {
+  replayRun as _replayRun,
+  listMatrixCells as _listMatrixCells,
+  listAggregateRuns as _listAggregateRuns,
+  getRunPreview as _getRunPreview,
+  listActiveRules as _listActiveRules,
+} from "@/lib/rule-check/server-actions";
+import type {
+  CheckRuleInput,
+  FetchedRuleClassified,
+  Instance,
+  RuleDecision,
+  ValidationReport,
+} from "@/lib/rule-check";
+
+// ─── Public types (mirror lib internals) ─────────────────────────────────
+
+export interface MatrixCell {
+  ruleId: string;
+  candidateId: string;
+  runId: string;
+  decision: RuleDecision;
+  timestamp: string;
+}
+
+export interface AggregateRow {
+  runId: string;
+  batchId?: string;
+  timestamp: string;
+  ruleId: string;
+  candidateId: string;
+  client: string;
+  actionRef: string;
+  decision: RuleDecision;
+}
+
+export interface AggregateMetrics {
+  total: number;
+  passedPct: number;
+  blockedPct: number;
+  pendingPct: number;
+  notStartedPct: number;
+  avgLatencyMs: number | null;
+  runsPerDay: number[];
+}
+
+export interface RunPreview {
+  runId: string;
+  batchId?: string;
+  timestamp: string;
+  input: CheckRuleInput;
+  ruleName: string;
+  finalDecision: { decision: RuleDecision; overrideReason?: string };
+  confidence: number | null;
+  conclusionText: string;
+  topDecisiveEvidence: Array<{
+    objectType: string;
+    objectId: string;
+    field: string;
+    value: unknown;
+    grounded?: boolean;
+  }>;
+  validation: ValidationReport;
+  fetchedInstances: Instance[];
+}
+
+// Input shapes used only by the wrappers below — not consumed externally.
+interface ListAggregateInput {
+  client?: string;
+  actionRef?: string;
+  ruleId?: string;
+  candidateId?: string;
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+}
+
+interface ListMatrixInput {
+  client?: string;
+  actionRef?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+// ─── Async wrappers ──────────────────────────────────────────────────────
+
+export async function replayRun(
+  runId: string,
+): Promise<{ ok: true; newRunId: string } | { ok: false; error: string }> {
+  return _replayRun(runId);
+}
+
+export async function listMatrixCells(
+  input: ListMatrixInput,
+): Promise<MatrixCell[]> {
+  return _listMatrixCells(input);
+}
+
+export async function listAggregateRuns(
+  input: ListAggregateInput,
+): Promise<{ rows: AggregateRow[]; aggregate: AggregateMetrics }> {
+  return _listAggregateRuns(input);
+}
+
+export async function getRunPreview(
+  runId: string,
+): Promise<{ ok: true; preview: RunPreview } | { ok: false; error: string }> {
+  return _getRunPreview(runId);
+}
+
+export async function listActiveRules(input: {
+  actionRef: string;
+  domain: string;
+  client: string;
+  clientDepartment?: string;
+}): Promise<FetchedRuleClassified[]> {
+  return _listActiveRules(input);
+}

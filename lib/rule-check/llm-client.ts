@@ -1,24 +1,30 @@
 /**
- * LLM client for the full `rule-check` impl.
+ * LLM client for the full `rule-check` impl — streaming + strict json_schema.
  *
- * Differences from MVP's `lib/simple-rule-check/llm-client.ts`:
- *   - Optionally requests `logprobs: true` so the composite confidence
- *     calculator can consume per-token logprobs (Phase E). Default is OFF
- *     because some OpenAI-compatible providers (Kimi/Moonshot via new-api
- *     proxies, etc.) hang or 4xx when `logprobs: true` is sent. Set
- *     `RULE_CHECK_LOGPROBS=1` (or pass `enableLogprobs: true`) to opt in
- *     once you've verified the provider supports it.
- *   - Uses the BatchJudgmentsJsonSchema as the strict response_format.
- *   - Returns the per-token logprobs alongside the raw response when
- *     requested; otherwise `logprobs: null` and the composite confidence
- *     calculator gracefully degrades to the no-logprob formula (locked
- *     decision #4).
+ * Streaming + SSE logging stay locked in (2026-05-13 504 debug). The
+ * `response_format` was briefly relaxed to `json_object` and then reverted to
+ * `{ type: "json_schema", strict: true, schema: MatchResumeEvalEnvelopeJsonSchema }`
+ * so the API-level shape constraint matches the in-prompt skeleton again.
+ *
+ *   - Always streams (`stream: true`); per-delta lines via rcDebug (gated by
+ *     `RULE_CHECK_DEBUG=1`); key events (first_byte / stream_end / error) via
+ *     rcInfo. Gives "proxy-died-before-first-byte" vs "LLM-died-mid-stream"
+ *     diagnostic visibility.
+ *   - `stream_options.include_usage` keeps token counts on the final chunk.
+ *   - Logprobs (when enabled) accumulated chunk-by-chunk; `null` →
+ *     composite confidence degrades.
+ *
+ * Knobs:
+ *   - `RULE_CHECK_DEBUG=1` — show per-delta lines.
+ *   - `RULE_CHECK_LOGPROBS=1` — request token logprobs (off by default; some
+ *     providers hang when this is set).
+ *   - `OPENAI_TIMEOUT_MS` — request timeout (default 600s).
  */
 
 import OpenAI from "openai";
 
 import { rcDebug, rcInfo, rcWarn } from "./debug";
-import { BatchJudgmentsJsonSchema } from "./output-schema-audited";
+import { MatchResumeEvalEnvelopeJsonSchema } from "./output-schema-audited";
 
 export class LLMUnreachableError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -40,11 +46,17 @@ export interface LLMEvaluateInput {
   schemaName?: string;
   /**
    * Enable `logprobs: true` on the chat-completions request. Default is OFF
-   * (some providers hang on it). When unset, falls back to env
-   * `RULE_CHECK_LOGPROBS=1`. composite confidence degrades gracefully when
-   * logprobs are absent — see `lib/rule-check/confidence/composite.ts`.
+   * (some providers hang on it). Falls back to env `RULE_CHECK_LOGPROBS=1`.
+   * composite confidence degrades gracefully when logprobs are absent — see
+   * `lib/rule-check/confidence/composite.ts`.
    */
   enableLogprobs?: boolean;
+  /**
+   * Override the `response_format.json_schema.schema`. Defaults to
+   * `MatchResumeEvalEnvelopeJsonSchema` (full Path B envelope). Path C callers
+   * pass `StepResultJsonSchema` per-step.
+   */
+  jsonSchema?: object;
 }
 
 export interface LogprobToken {
@@ -53,7 +65,7 @@ export interface LogprobToken {
 }
 
 export interface LLMEvaluateOutput {
-  /** Plain-object form of the raw API response (RSC-safe). */
+  /** Plain-object form of the (synthetic) chat-completion response (RSC-safe). */
   response: unknown;
   model: string;
   contentJson: unknown;
@@ -76,13 +88,15 @@ export async function evaluate(input: LLMEvaluateInput): Promise<LLMEvaluateOutp
   }
   const baseURL = input.baseUrl ?? process.env["OPENAI_BASE_URL"];
   const model = input.model ?? process.env["OPENAI_MODEL"] ?? DEFAULT_MODEL;
-  const schemaName = input.schemaName ?? "RuleCheckBatchJudgments";
+  const schemaName = input.schemaName ?? "MatchResumeEvalEnvelope";
+  const timeoutMs = resolveTimeoutMs(process.env["OPENAI_TIMEOUT_MS"]);
 
-  const client = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
+  const client = new OpenAI({
+    apiKey,
+    ...(baseURL ? { baseURL } : {}),
+    timeout: timeoutMs,
+  });
 
-  // logprobs: default OFF (many providers — e.g. Kimi via new-api proxy —
-  // hang when this field is sent). Opt in via input.enableLogprobs OR
-  // RULE_CHECK_LOGPROBS=1/true.
   const logprobsRequested = resolveLogprobsRequested(input.enableLogprobs);
 
   rcDebug("llm", "evaluate config", {
@@ -90,14 +104,17 @@ export async function evaluate(input: LLMEvaluateInput): Promise<LLMEvaluateOutp
     baseURL: baseURL ?? "(default openai)",
     apiKeyTail: apiKey.slice(-4),
     schemaName,
+    responseFormat: "json_schema (strict)",
+    streaming: true,
     logprobsRequested,
+    timeoutMs,
     systemChars: input.system.length,
     userChars: input.user.length,
   });
 
   const attempt = async (): Promise<LLMEvaluateOutput> => {
     const t0 = Date.now();
-    const response = await client.chat.completions.create({
+    const stream = await client.chat.completions.create({
       model,
       messages: [
         { role: "system", content: input.system },
@@ -107,58 +124,144 @@ export async function evaluate(input: LLMEvaluateInput): Promise<LLMEvaluateOutp
         type: "json_schema",
         json_schema: {
           name: schemaName,
-          schema: BatchJudgmentsJsonSchema as unknown as Record<string, unknown>,
+          schema: (input.jsonSchema ?? MatchResumeEvalEnvelopeJsonSchema) as unknown as Record<string, unknown>,
           strict: true,
         },
       },
+      stream: true,
+      stream_options: { include_usage: true },
       ...(logprobsRequested ? { logprobs: true } : {}),
     });
-    const latencyMs = Date.now() - t0;
 
-    const choice = response.choices[0];
-    if (!choice || !choice.message || typeof choice.message.content !== "string") {
+    let content = "";
+    let firstByteMs: number | null = null;
+    let deltaCount = 0;
+    let finishReason: string | null = null;
+    let usage: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    } | null = null;
+    let modelActual = model;
+    const logprobAcc: LogprobToken[] = [];
+
+    try {
+      for await (const chunk of stream) {
+        const c = chunk as {
+          model?: string;
+          usage?: {
+            prompt_tokens?: number;
+            completion_tokens?: number;
+            total_tokens?: number;
+          };
+          choices?: Array<{
+            delta?: { content?: string | null };
+            finish_reason?: string | null;
+            logprobs?: { content?: unknown };
+          }>;
+        };
+        if (c.model) modelActual = c.model;
+        if (c.usage) usage = c.usage;
+        const choice = c.choices?.[0];
+        if (!choice) continue;
+
+        const deltaContent = choice.delta?.content;
+        if (typeof deltaContent === "string" && deltaContent.length > 0) {
+          if (firstByteMs === null) {
+            firstByteMs = Date.now() - t0;
+            rcInfo("llm", "first_byte", { tookMs: firstByteMs, model: modelActual });
+          }
+          content += deltaContent;
+          deltaCount++;
+          rcDebug("llm", "delta", {
+            idx: deltaCount,
+            chunkChars: deltaContent.length,
+            totalChars: content.length,
+          });
+        }
+
+        if (logprobsRequested && Array.isArray(choice.logprobs?.content)) {
+          for (const entry of choice.logprobs.content) {
+            if (typeof entry !== "object" || entry === null) continue;
+            const e = entry as { token?: unknown; logprob?: unknown };
+            if (typeof e.token === "string" && typeof e.logprob === "number") {
+              logprobAcc.push({ token: e.token, logprob: e.logprob });
+            }
+          }
+        }
+
+        if (choice.finish_reason) finishReason = choice.finish_reason;
+      }
+    } catch (err) {
+      rcWarn("llm", "stream error", {
+        deltas: deltaCount,
+        contentChars: content.length,
+        firstByteMs,
+        message: (err as Error).message,
+      });
+      throw err;
+    }
+
+    const latencyMs = Date.now() - t0;
+    rcInfo("llm", "stream_end", {
+      deltas: deltaCount,
+      contentChars: content.length,
+      firstByteMs,
+      latencyMs,
+      finishReason,
+      promptTokens: usage?.prompt_tokens ?? 0,
+      completionTokens: usage?.completion_tokens ?? 0,
+    });
+
+    if (content.length === 0) {
       throw new LLMUnreachableError(
-        `LLM response missing message content (model=${model})`,
-        response,
+        `LLM stream returned no content (model=${modelActual}, deltas=${deltaCount}, latencyMs=${latencyMs})`,
       );
     }
 
     let contentJson: unknown;
     try {
-      contentJson = JSON.parse(choice.message.content);
+      contentJson = JSON.parse(content);
     } catch (err) {
       throw new LLMUnreachableError(
-        `LLM message content is not valid JSON (model=${model}): ${(err as Error).message}`,
-        choice.message.content,
+        `LLM streamed content is not valid JSON (model=${modelActual}): ${(err as Error).message}`,
+        content,
       );
     }
 
-    // RSC boundary: strip class methods from the OpenAI SDK's response instance.
-    const plainResponse: unknown = JSON.parse(JSON.stringify(response));
-
-    // Extract logprobs (graceful degradation when null/missing).
-    const logprobs = logprobsRequested ? extractLogprobs(choice) : null;
+    const logprobs = logprobsRequested
+      ? (logprobAcc.length > 0 ? logprobAcc : null)
+      : null;
     if (logprobsRequested && logprobs === null && !loggedLogprobWarning) {
       loggedLogprobWarning = true;
-      rcWarn("llm", "provider did not return logprobs — composite confidence will run in degraded mode", {
-        model,
-      });
+      rcWarn(
+        "llm",
+        "provider did not return logprobs — composite confidence will run in degraded mode",
+        { model: modelActual },
+      );
     }
-    rcDebug("llm", "response received", {
-      model: response.model ?? model,
-      inputTokens: response.usage?.prompt_tokens ?? 0,
-      outputTokens: response.usage?.completion_tokens ?? 0,
-      latencyMs,
-      logprobTokens: logprobs ? logprobs.length : 0,
-      contentChars: choice.message.content.length,
-    });
+
+    // Synthesize a chat-completion-shaped object so downstream audit storage
+    // keeps the same provenance shape it had under non-streaming mode.
+    const syntheticResponse = {
+      model: modelActual,
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content },
+          finish_reason: finishReason ?? "stop",
+          ...(logprobs ? { logprobs: { content: logprobs } } : {}),
+        },
+      ],
+      usage: usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    };
 
     return {
-      response: plainResponse,
-      model: response.model ?? model,
+      response: syntheticResponse,
+      model: modelActual,
       contentJson,
-      inputTokens: response.usage?.prompt_tokens ?? 0,
-      outputTokens: response.usage?.completion_tokens ?? 0,
+      inputTokens: usage?.prompt_tokens ?? 0,
+      outputTokens: usage?.completion_tokens ?? 0,
       latencyMs,
       logprobs,
     };
@@ -196,28 +299,19 @@ export async function evaluate(input: LLMEvaluateInput): Promise<LLMEvaluateOutp
   }
 }
 
-function extractLogprobs(choice: unknown): LogprobToken[] | null {
-  if (typeof choice !== "object" || choice === null) return null;
-  const c = choice as { logprobs?: { content?: unknown } };
-  const content = c.logprobs?.content;
-  if (!Array.isArray(content)) return null;
-  const tokens: LogprobToken[] = [];
-  for (const entry of content) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const e = entry as { token?: unknown; logprob?: unknown };
-    if (typeof e.token === "string" && typeof e.logprob === "number") {
-      tokens.push({ token: e.token, logprob: e.logprob });
-    }
-  }
-  return tokens.length > 0 ? tokens : null;
-}
-
 function resolveLogprobsRequested(explicit: boolean | undefined): boolean {
   if (typeof explicit === "boolean") return explicit;
   const raw = process.env["RULE_CHECK_LOGPROBS"];
   if (!raw) return false;
   const v = raw.trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+function resolveTimeoutMs(raw: string | undefined): number {
+  const DEFAULT_MS = 600_000;
+  if (!raw) return DEFAULT_MS;
+  const n = Number.parseInt(raw.trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MS;
 }
 
 function isRetryable(err: unknown): boolean {

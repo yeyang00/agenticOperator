@@ -2,21 +2,24 @@
 /**
  * /rule-check/runs/[runId] — the Prove page.
  *
- * Six vertical layers, each a Card with an anchor id:
+ * Eight vertical layers (SPEC §9.2), each a Card with an anchor id. L2 and
+ * L5 are new in this iteration (2026-05-13):
  *   1. Verdict hero
- *   2. Why this verdict (RootCauseTimeline)
- *   3. Evidence ledger (EvidenceCard grid + drawer for raw instance JSON)
- *   4. Validation strip (4-light board + failures pills)
- *   5. Prompt + Response receipts (PromptPanel 3-tab + ResponsePanel + LogprobInlineChart)
- *   6. Ask why (AskWhyChat)
+ *   2. ★ Inference Chain (Rule → decisive Evidence → Verdict; SPEC §9.2)
+ *   3. Why this verdict (RootCauseTimeline; dataObservation chip-ified per D5)
+ *   4. Evidence ledger (EvidenceCard grid + drawer for raw instance JSON)
+ *   5. ★ Counterfactuals (LLM-speculative, surfaced from envelope; UI-D)
+ *   6. Validation strip (4-light board + failures pills)
+ *   7. Prompt + Response receipts (PromptPanel 3-tab + ResponsePanel + LogprobInlineChart)
+ *   8. Ask why (AskWhyChat)
  */
-import React, { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Badge, Btn, Card, CardHead } from "@/components/shared/atoms";
 import { useApp } from "@/lib/i18n";
-import { MOCK_RUNS } from "./mock";
 import { DecisionBadge } from "./atoms/DecisionBadge";
 import { ConfidenceRing } from "./atoms/ConfidenceRing";
+import { InferenceChain } from "./atoms/InferenceChain";
 import { RootCauseTimeline } from "./atoms/RootCauseTimeline";
 import { EvidenceCard } from "./atoms/EvidenceCard";
 import { ValidationLight } from "./atoms/ValidationLight";
@@ -24,34 +27,30 @@ import { PromptPanel } from "./atoms/PromptPanel";
 import { ResponsePanel } from "./atoms/ResponsePanel";
 import { LogprobInlineChart } from "./atoms/LogprobInlineChart";
 import { AskWhyChat } from "./atoms/AskWhyChat";
-import type { Instance } from "@/lib/rule-check";
+import { CounterfactualsList } from "./atoms/CounterfactualsList";
+import { ReplayButton } from "./atoms/ReplayButton";
+import type { Instance, RuleCheckRunAudited } from "@/lib/rule-check";
 
 export interface RunDetailContentProps {
-  runId: string;
+  run: RuleCheckRunAudited;
 }
 
-export function RunDetailContent({ runId }: RunDetailContentProps) {
+export function RunDetailContent({ run }: RunDetailContentProps) {
   const { t } = useApp();
-  const run = useMemo(() => MOCK_RUNS.find((r) => r.runId === runId), [runId]);
   const [drawer, setDrawer] = useState<Instance | null>(null);
-
-  if (!run) {
-    return (
-      <div className="p-6">
-        <Card>
-          <div className="p-6 text-center text-ink-3">
-            Run {runId.slice(0, 8)} not found.
-            <Link href="/rule-check/runs" className="ml-2 text-accent hover:underline">
-              ← back to list
-            </Link>
-          </div>
-        </Card>
-      </div>
-    );
-  }
 
   const fetchedInstances = run.fetched.instances;
   const evidence = run.llmParsed?.evidence ?? [];
+
+  // For SPEC §9.3 D5 — map evidence.objectId → first index, used to chip-ify
+  // bracketed IDs in `rootCauseSections.dataObservation`.
+  const evidenceIndexByObjectId = useMemo(() => {
+    const m = new Map<string, number>();
+    evidence.forEach((ev, i) => {
+      if (!m.has(ev.objectId)) m.set(ev.objectId, i);
+    });
+    return m;
+  }, [evidence]);
 
   function resolveSource(idx: number): Instance | undefined {
     return fetchedInstances[idx];
@@ -82,9 +81,11 @@ export function RunDetailContent({ runId }: RunDetailContentProps) {
               </span>
               <span className="text-ink-3">·</span>
               <span className="text-[14px] text-ink-2">{run.fetched.rule.name}</span>
-              {run.finalDecision.overrideReason && (
+              {run.finalDecision.overrideReason?.startsWith("short_circuit:") ? (
+                <Badge variant="warn">↯ Skipped (short-circuit)</Badge>
+              ) : run.finalDecision.overrideReason ? (
                 <Badge variant="warn">{t("rc_overridden")}</Badge>
-              )}
+              ) : null}
             </div>
             <div className="text-[12px] text-ink-3">
               <span>
@@ -103,7 +104,8 @@ export function RunDetailContent({ runId }: RunDetailContentProps) {
               {run.timestamp} · runId {run.runId.slice(0, 12)}…
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 items-end">
+            <ReplayButton runId={run.runId} />
             <Btn variant="ghost" size="sm" onClick={() => navigator.clipboard?.writeText(run.runId)}>
               {t("rc_copy_run_id")}
             </Btn>
@@ -117,28 +119,51 @@ export function RunDetailContent({ runId }: RunDetailContentProps) {
         </div>
         {run.finalDecision.overrideReason && (
           <div className="border-t border-line bg-warn-bg px-4 py-2 text-[11.5px] text-warn">
-            ⚠ {run.finalDecision.overrideReason}
+            {run.finalDecision.overrideReason.startsWith("short_circuit:")
+              ? `↯ ${run.finalDecision.overrideReason} — 本规则未进入评估,上游 step 已硬终止`
+              : `⚠ ${run.finalDecision.overrideReason}`}
           </div>
         )}
       </Card>
 
-      {/* ── Layer 2: Why this verdict ─────────────────────────── */}
+      {/* ── Layer 2: ★ Inference Chain ────────────────────────── */}
+      <Card>
+        <CardHead>
+          <a id="layer-2" />
+          <span className="text-[12.5px] font-medium text-ink-1">
+            {t("rc_chain_title")}
+          </span>
+        </CardHead>
+        <div className="p-2">
+          <InferenceChain run={run} />
+        </div>
+      </Card>
+
+      {/* ── Layer 3: Why this verdict ─────────────────────────── */}
       {run.llmParsed?.rootCauseSections && (
         <Card>
           <CardHead>
-            <a id="layer-2" />
+            <a id="layer-3" />
             <span className="text-[12.5px] font-medium text-ink-1">{t("rc_why")}</span>
           </CardHead>
           <div className="p-4">
-            <RootCauseTimeline sections={run.llmParsed.rootCauseSections} />
+            <RootCauseTimeline
+              sections={run.llmParsed.rootCauseSections}
+              renderedSections={{
+                dataObservation: chipifyText(
+                  run.llmParsed.rootCauseSections.dataObservation,
+                  evidenceIndexByObjectId,
+                ),
+              }}
+            />
           </div>
         </Card>
       )}
 
-      {/* ── Layer 3: Evidence ledger ──────────────────────────── */}
+      {/* ── Layer 4: Evidence ledger ──────────────────────────── */}
       <Card>
         <CardHead>
-          <a id="layer-3" />
+          <a id="layer-4" />
           <span className="text-[12.5px] font-medium text-ink-1">{t("rc_evidence")}</span>
           <span className="ml-2 text-[11px] text-ink-3">{evidence.length}</span>
         </CardHead>
@@ -159,10 +184,25 @@ export function RunDetailContent({ runId }: RunDetailContentProps) {
         </div>
       </Card>
 
-      {/* ── Layer 4: Validation strip ───────────────────────── */}
+      {/* ── Layer 5: ★ Counterfactuals (hidden when absent) ──── */}
+      {run.llmParsed?.counterfactuals && run.llmParsed.counterfactuals.length > 0 && (
+        <Card>
+          <CardHead>
+            <a id="layer-5" />
+            <span className="text-[12.5px] font-medium text-ink-1">
+              {t("rc_cf_title")}
+            </span>
+          </CardHead>
+          <div className="p-4">
+            <CounterfactualsList counterfactuals={run.llmParsed.counterfactuals} />
+          </div>
+        </Card>
+      )}
+
+      {/* ── Layer 6: Validation strip ───────────────────────── */}
       <Card>
         <CardHead>
-          <a id="layer-4" />
+          <a id="layer-6" />
           <span className="text-[12.5px] font-medium text-ink-1">{t("rc_validation")}</span>
         </CardHead>
         <div className="p-4 flex flex-col gap-3">
@@ -177,10 +217,10 @@ export function RunDetailContent({ runId }: RunDetailContentProps) {
         </div>
       </Card>
 
-      {/* ── Layer 5: Prompt + Response receipts ─────────────── */}
+      {/* ── Layer 7: Prompt + Response receipts ─────────────── */}
       <Card>
         <CardHead>
-          <a id="layer-5" />
+          <a id="layer-7" />
           <span className="text-[12.5px] font-medium text-ink-1">{t("rc_prompt")} + {t("rc_response")}</span>
         </CardHead>
         <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -201,10 +241,10 @@ export function RunDetailContent({ runId }: RunDetailContentProps) {
         </div>
       </Card>
 
-      {/* ── Layer 6: Ask why ────────────────────────────────── */}
+      {/* ── Layer 8: Ask why ────────────────────────────────── */}
       <Card>
         <CardHead>
-          <a id="layer-6" />
+          <a id="layer-8" />
           <span className="text-[12.5px] font-medium text-ink-1">{t("rc_ask_why")}</span>
         </CardHead>
         <div className="p-4">
@@ -257,4 +297,60 @@ function generateMockLogprobs(outputTokens: number): Array<{ token: string; logp
     out.push({ token: `t${i}`, logprob: -0.05 - Math.random() * 0.6 });
   }
   return out;
+}
+
+/**
+ * SPEC §9.3 D5 — replace bracketed IDs like "[App-12345]" with clickable
+ * chips when they correspond to an `evidence[].objectId` in this run.
+ * Non-matching brackets are left as plain text. The chip click scrolls to
+ * the corresponding L2 InferenceChain node by id `chain-evidence-<idx>`.
+ */
+function chipifyText(
+  text: string,
+  evidenceIndexByObjectId: Map<string, number>,
+): ReactNode {
+  if (!text) return null;
+  const regex = /\[([A-Z][a-zA-Z0-9-]+)\]/g;
+  const parts: ReactNode[] = [];
+  let lastIdx = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = regex.exec(text)) !== null) {
+    const full = m[0];
+    const inner = m[1];
+    const start = m.index;
+    const target = evidenceIndexByObjectId.get(inner);
+    if (target !== undefined) {
+      if (start > lastIdx) parts.push(text.slice(lastIdx, start));
+      parts.push(
+        <button
+          key={`chip-${key++}`}
+          type="button"
+          className="inline-flex items-center rounded border px-1.5 mx-0.5 text-[12px] hover:opacity-80"
+          style={{
+            color: "var(--c-info)",
+            background: "var(--c-info-bg)",
+            borderColor: "color-mix(in oklab, var(--c-info) 30%, transparent)",
+          }}
+          onClick={() => scrollToChainEvidence(target)}
+        >
+          {full}
+        </button>,
+      );
+      lastIdx = start + full.length;
+    }
+  }
+  if (lastIdx < text.length) parts.push(text.slice(lastIdx));
+  return parts.length > 0 ? parts : text;
+}
+
+function scrollToChainEvidence(idx: number) {
+  if (typeof document === "undefined") return;
+  const el = document.getElementById(`chain-evidence-${idx}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.style.boxShadow = "0 0 0 3px color-mix(in oklab, var(--c-info) 40%, transparent)";
+  setTimeout(() => {
+    el.style.boxShadow = "";
+  }, 1400);
 }
