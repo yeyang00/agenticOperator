@@ -22,6 +22,7 @@
 
 import { createHash } from "node:crypto";
 
+import type { ExtraInstance } from "../../ontology-gen/v4/assemble-v4-4";
 import { generatePrompt, type GeneratePromptOptions } from "../../ontology-gen/v4/generate-prompt";
 import { fillRuntimeInput } from "../../ontology-gen/v4/fill-runtime-input";
 import type { ActionObjectV4 } from "../../ontology-gen/v4/types";
@@ -40,10 +41,20 @@ export interface BuildEvalPromptOptions {
   clientDepartment?: string;
   domain: string;
   runtimeInput: RuntimeInputV4;
+  /**
+   * Optional prefetched Ontology instances rendered into `## 额外数据` section.
+   * fetchedInstanceIndex begins at 2 (Job=0, Resume=1).
+   */
+  extraInstances?: ExtraInstance[];
   /** Override env for the upstream `generatePrompt` call. */
   apiBase?: string;
   apiToken?: string;
   timeoutMs?: number;
+  /**
+   * Path C: when set, build a slim per-step prompt scoped to this stepOrder
+   * (forwarded to `assembleActionObjectV4_4`). Omit for full-envelope.
+   */
+  focusStep?: number;
 }
 
 export interface BuildEvalPromptResult {
@@ -58,14 +69,19 @@ export async function buildEvalPrompt(
   opts: BuildEvalPromptOptions,
 ): Promise<BuildEvalPromptResult> {
   // ── Step 1: templated action object (placeholders intact).
+  // Includes extraInstances so the ## 额外数据 section renders into both the
+  // templated and the resolved form — that section is data-driven (not
+  // placeholder-substituted), so it must be in the same shape both times.
   const templatedOpts: GeneratePromptOptions = {
     actionRef: opts.actionRef,
     client: opts.client,
     clientDepartment: opts.clientDepartment,
     domain: opts.domain,
+    extraInstances: opts.extraInstances,
     apiBase: opts.apiBase,
     apiToken: opts.apiToken,
     timeoutMs: opts.timeoutMs,
+    focusStep: opts.focusStep,
     // intentionally omit runtimeInput so generatePrompt returns templated form
   };
   const templated = await generatePrompt(templatedOpts);
@@ -98,7 +114,12 @@ export async function buildEvalPrompt(
       client: opts.client,
       clientDepartment: opts.clientDepartment,
       domain: opts.domain,
-      runtimeInputDigest: sha256(stableStringify(opts.runtimeInput)),
+      runtimeInputDigest: sha256(
+        stableStringify({
+          runtimeInput: opts.runtimeInput,
+          extraInstances: opts.extraInstances ?? [],
+        }),
+      ),
     },
     resolvedAt,
   };

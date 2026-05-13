@@ -1,150 +1,51 @@
 /**
- * Strict batch output schema for the LLM in the full `rule-check` impl.
+ * Output schema for the LLM in the full `rule-check` impl.
  *
- * The LLM emits `{ judgments: RuleJudgmentAudited[] }` — one judgment per
- * matchResume rule, in a single call. Both Zod (runtime) and JSON Schema
- * (OpenAI `response_format`) representations are kept side-by-side and MUST
- * stay in sync.
+ * Path B (locked 2026-05-12): the LLM emits ONE `MatchResumeEvalEnvelope` per
+ * run — `{ step_results: { step_N: { rule_judgments[] } }, final_output }` —
+ * structurally identical to the envelope rendered by `generatePrompt`'s
+ * `## 最终输出 JSON 结构` section. The orchestrator parses the envelope and
+ * iterates `step_results[*].rule_judgments[]` to produce per-rule
+ * `RuleCheckRunAudited` records.
+ *
+ * Single source of truth for the envelope shape lives at
+ * `lib/ontology-gen/v4/envelope-schema.ts` — this file just re-exports the
+ * pieces `rule-check` needs (Zod for parsing, JSON Schema for response_format).
  *
  * Note: `evidence[i].grounded` is intentionally NOT in the LLM-side schema —
  * it is set in-place by post-validation (`validation/evidence-grounded.ts`).
  * Letting the LLM declare itself "grounded" would defeat the validator.
  */
 
-import { z } from "zod";
+import {
+  MatchResumeEvalEnvelopeZod,
+  RuleJudgmentZod,
+  StepResultJsonSchema as StepResultJsonSchemaInternal,
+  StepResultZod as StepResultZodInternal,
+  matchResumeEvalEnvelopeJsonSchema,
+  type MatchResumeEvalEnvelope as MatchResumeEvalEnvelopeType,
+  type RuleJudgmentInEnvelope,
+} from "../ontology-gen/v4/envelope-schema";
 
-// ─── Zod (runtime parsing) ────────────────────────────────────────────
+// Per-judgment shape (kept for validation pipeline, which validates one
+// judgment at a time after the envelope is parsed)
+export const RuleJudgmentAuditedSchema = RuleJudgmentZod;
+export type RuleJudgmentAuditedZod = RuleJudgmentInEnvelope;
 
-export const EvidenceAuditedSchema = z.object({
-  sourceType: z.literal("neo4j_instance"),
-  objectType: z.string().min(1),
-  objectId: z.string().min(1),
-  field: z.string().min(1),
-  value: z.unknown(),
-  fetchedInstanceIndex: z.number().int().min(0),
-  decisive: z.boolean(),
-});
+// Envelope shapes
+export const MatchResumeEvalEnvelopeSchema = MatchResumeEvalEnvelopeZod;
+export type MatchResumeEvalEnvelope = MatchResumeEvalEnvelopeType;
 
-export const RootCauseSectionsSchema = z.object({
-  ruleRequirement: z.string(),
-  dataObservation: z.string(),
-  contrastReasoning: z.string(),
-  conclusion: z.string(),
-});
+/**
+ * JSON Schema for OpenAI `response_format.json_schema.schema`. Strict mode
+ * compatible. Top-level shape: `{ step_results: { ...stepKeys: {rule_judgments[]}... }, final_output }`.
+ */
+export const MatchResumeEvalEnvelopeJsonSchema = matchResumeEvalEnvelopeJsonSchema;
 
-export const CounterfactualSchema = z.object({
-  hypotheticalChange: z.string(),
-  predictedDecision: z.enum(["not_started", "passed", "blocked", "pending_human"]),
-  confidence: z.number().min(0).max(1),
-});
-
-export const RuleJudgmentAuditedSchema = z.object({
-  ruleId: z.string().min(1),
-  decision: z.enum(["not_started", "passed", "blocked", "pending_human"]),
-  evidence: z.array(EvidenceAuditedSchema),
-  rootCause: z.string(),
-  rootCauseSections: RootCauseSectionsSchema,
-  confidence: z.number().min(0).max(1),
-  nextAction: z.string(),
-  counterfactuals: z.array(CounterfactualSchema).optional(),
-});
-
-export const BatchJudgmentsSchema = z.object({
-  judgments: z.array(RuleJudgmentAuditedSchema),
-});
-
-export type BatchJudgmentsZod = z.infer<typeof BatchJudgmentsSchema>;
-
-// ─── JSON Schema (for OpenAI response_format strict mode) ────────────
-
-const DecisionEnumJson = {
-  type: "string",
-  enum: ["not_started", "passed", "blocked", "pending_human"],
-} as const;
-
-const EvidenceAuditedJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "sourceType",
-    "objectType",
-    "objectId",
-    "field",
-    "value",
-    "fetchedInstanceIndex",
-    "decisive",
-  ],
-  properties: {
-    sourceType: { type: "string", enum: ["neo4j_instance"] },
-    objectType: { type: "string" },
-    objectId: { type: "string" },
-    field: { type: "string" },
-    value: {},
-    fetchedInstanceIndex: { type: "integer", minimum: 0 },
-    decisive: { type: "boolean" },
-  },
-} as const;
-
-const RootCauseSectionsJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "ruleRequirement",
-    "dataObservation",
-    "contrastReasoning",
-    "conclusion",
-  ],
-  properties: {
-    ruleRequirement: { type: "string" },
-    dataObservation: { type: "string" },
-    contrastReasoning: { type: "string" },
-    conclusion: { type: "string" },
-  },
-} as const;
-
-const CounterfactualJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["hypotheticalChange", "predictedDecision", "confidence"],
-  properties: {
-    hypotheticalChange: { type: "string" },
-    predictedDecision: DecisionEnumJson,
-    confidence: { type: "number", minimum: 0, maximum: 1 },
-  },
-} as const;
-
-const RuleJudgmentAuditedJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "ruleId",
-    "decision",
-    "evidence",
-    "rootCause",
-    "rootCauseSections",
-    "confidence",
-    "nextAction",
-  ],
-  properties: {
-    ruleId: { type: "string" },
-    decision: DecisionEnumJson,
-    evidence: { type: "array", items: EvidenceAuditedJsonSchema },
-    rootCause: { type: "string" },
-    rootCauseSections: RootCauseSectionsJsonSchema,
-    confidence: { type: "number", minimum: 0, maximum: 1 },
-    nextAction: { type: "string" },
-    counterfactuals: { type: "array", items: CounterfactualJsonSchema },
-  },
-} as const;
-
-export const BatchJudgmentsJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["judgments"],
-  properties: {
-    judgments: {
-      type: "array",
-      items: RuleJudgmentAuditedJsonSchema,
-    },
-  },
-} as const;
+/**
+ * Per-step output shape used by Path C: each per-step LLM call returns just
+ * `{ rule_judgments: [...] }`. Sub-shape of the full envelope's `step_results.<key>`.
+ */
+export const StepResultJsonSchema = StepResultJsonSchemaInternal;
+export const StepResultSchema = StepResultZodInternal;
+export type StepResultParsed = ReturnType<typeof StepResultZodInternal.parse>;

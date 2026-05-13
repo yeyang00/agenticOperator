@@ -8,9 +8,10 @@
  * UI — that lives at `/rule-check/*`.
  */
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { runCheckBatch, type RunCheckBatchResult } from "./actions";
+import { formatElapsed } from "@/components/rule-check/atoms/formatElapsed";
 
 const DEFAULTS = {
   actionRef: "matchResume",
@@ -34,6 +35,18 @@ export default function RuleCheckDevPage() {
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<RunCheckBatchResult | null>(null);
   const [showTrace, setShowTrace] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  // Tick elapsed timer once per second while a run is in flight.
+  useEffect(() => {
+    if (!isPending) return;
+    setElapsedMs(0);
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      setElapsedMs(Date.now() - startedAt);
+    }, 250);
+    return () => clearInterval(id);
+  }, [isPending]);
 
   const canRun = useMemo(
     () =>
@@ -108,8 +121,13 @@ export default function RuleCheckDevPage() {
               disabled={!canRun}
               onClick={handleRun}
             >
-              {isPending ? "Running…" : "Run check"}
+              {isPending ? `Running… ${formatElapsed(elapsedMs)}` : "Run check"}
             </button>
+            {isPending && (
+              <p className="mt-1 text-[10px] text-ink-3">
+                Single LLM call: prefetch → generatePrompt → kimi → envelope parse → per-rule validate. Watch stderr for stage timings (RULE_CHECK_DEBUG=1 for verbose).
+              </p>
+            )}
           </div>
         </Panel>
 
@@ -135,20 +153,22 @@ export default function RuleCheckDevPage() {
                     </span>
                   )}
                 </div>
+                {result.batch.aggregateDecision.terminal && (
+                  <div className="mt-2 rounded border border-warn bg-warn-bg px-3 py-2 text-[11px] text-warn">
+                    ↯ <strong>short-circuit @ step {result.batch.aggregateDecision.terminalAtStep}</strong> — 后续 step 跳过 LLM 调用,规则合成为 not_started
+                  </div>
+                )}
                 <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-ink-3 sm:grid-cols-4">
                   <Stat label="batchId" value={result.batch.batchId.slice(0, 8) + "…"} />
                   <Stat label="rules" value={String(result.batch.results.length)} />
-                  <Stat label="model" value={result.batch.llmRaw.model} />
-                  <Stat label="latency" value={`${result.batch.llmRaw.latencyMs}ms`} />
-                  <Stat label="in/out tok" value={`${result.batch.llmRaw.inputTokens}/${result.batch.llmRaw.outputTokens}`} />
+                  <Stat label="steps" value={String(result.batch.stepCalls.length)} />
+                  <Stat label="model" value={firstStepLlmRaw(result.batch)?.model ?? "—"} />
+                  <Stat label="total latency" value={`${sumStepLatency(result.batch)}ms`} />
+                  <Stat label="total in/out tok" value={`${sumStepTokens(result.batch, "in")}/${sumStepTokens(result.batch, "out")}`} />
                   <Stat label="api calls" value={String(result.batch.ontologyApiTrace.length)} />
                   <Stat
-                    label="prompt sha"
-                    value={result.batch.promptProvenance.promptSha256.slice(0, 8) + "…"}
-                  />
-                  <Stat
-                    label="action sha"
-                    value={result.batch.promptProvenance.actionObjectSha256.slice(0, 8) + "…"}
+                    label="step calls"
+                    value={result.batch.stepCalls.map((s) => s.shortCircuited ? `${s.stepKey}:skip` : `${s.stepKey}:✓`).join(" ")}
                   />
                 </div>
               </Panel>
@@ -226,6 +246,23 @@ export default function RuleCheckDevPage() {
       `}</style>
     </main>
   );
+}
+
+type BatchResultLike = Extract<RunCheckBatchResult, { ok: true }>["batch"];
+
+function firstStepLlmRaw(batch: BatchResultLike): BatchResultLike["stepCalls"][number]["llmRaw"] | null {
+  return batch.stepCalls.find((s) => !s.shortCircuited)?.llmRaw ?? null;
+}
+
+function sumStepLatency(batch: BatchResultLike): number {
+  return batch.stepCalls.reduce((sum, s) => sum + (s.llmRaw?.latencyMs ?? 0), 0);
+}
+
+function sumStepTokens(batch: BatchResultLike, kind: "in" | "out"): number {
+  return batch.stepCalls.reduce((sum, s) => {
+    if (!s.llmRaw) return sum;
+    return sum + (kind === "in" ? s.llmRaw.inputTokens : s.llmRaw.outputTokens);
+  }, 0);
 }
 
 function decisionColor(d: string): string {

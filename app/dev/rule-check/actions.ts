@@ -1,13 +1,18 @@
 "use server";
 
 /**
- * Server action — invokes the full Rule Checker on behalf of `/dev/rule-check/`.
+ * Server-action surface for `/dev/rule-check`.
  *
- * Engineering preview surface. Tokens stay server-side. Mirrors
- * `app/dev/simple-rule-check/actions.ts` but uses the batch API.
+ * Pattern matches `app/dev/simple-rule-check/actions.ts`: types are
+ * DECLARED LOCALLY (export interface / export type) — re-exporting
+ * types from another module breaks Next.js 16's Turbopack "use server"
+ * transform with runtime ReferenceErrors. Shapes mirror the internal
+ * declarations in `lib/rule-check/server-actions.ts` (kept in sync
+ * manually; that file is the source of truth for the implementation).
  */
 
-import { checkRules, type RuleCheckBatchRunAudited } from "@/lib/rule-check";
+import { runCheckBatch as _runCheckBatch } from "@/lib/rule-check/server-actions";
+import type { RuleCheckBatchRunAudited } from "@/lib/rule-check";
 
 export interface RunCheckBatchOptions {
   actionRef: string;
@@ -26,21 +31,5 @@ export type RunCheckBatchResult =
 export async function runCheckBatch(
   opts: RunCheckBatchOptions,
 ): Promise<RunCheckBatchResult> {
-  try {
-    const batch = await checkRules({
-      actionRef: opts.actionRef,
-      candidateId: opts.candidateId,
-      jobRef: opts.jobRef,
-      scope: { client: opts.client, department: opts.clientDepartment },
-      domain: opts.domain,
-      ruleIds: opts.ruleIds,
-    });
-    return { ok: true, batch };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
-      details: err instanceof Error && err.stack ? { stack: err.stack } : undefined,
-    };
-  }
+  return _runCheckBatch(opts);
 }

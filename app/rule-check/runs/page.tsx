@@ -1,17 +1,10 @@
-"use client";
-import React from "react";
-import { Shell } from "@/components/shared/Shell";
-import { RunListContent } from "@/components/rule-check/RunListContent";
-import { useApp } from "@/lib/i18n";
+import { redirect } from "next/navigation";
 
-export default function RunListPage() {
-  const { t } = useApp();
-  return (
-    <Shell
-      crumbs={[t("nav_group_trust"), t("nav_rule_check"), t("rc_runs")]}
-      directionTag={t("rc_runs")}
-    >
-      <RunListContent />
-    </Shell>
-  );
+/**
+ * Legacy URL. Phase A (2026-05-13) moved the aggregate page content to
+ * `/rule-check` so the runs aggregate is the primary landing. Redirect
+ * here preserves any external links pointing at the old path.
+ */
+export default function LegacyRunsRedirect() {
+  redirect("/rule-check");
 }
