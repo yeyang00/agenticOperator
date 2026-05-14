@@ -8,11 +8,11 @@
 import { Shell } from "@/components/shared/Shell";
 import { useApp } from "@/lib/i18n";
 import { AggregateContent } from "./AggregateContent";
-import type { AggregateRow, AggregateMetrics } from "@/app/rule-check/actions";
+import type { BatchRow, BatchAggregateMetrics } from "@/app/rule-check/actions";
 
 export interface AggregatePageViewProps {
-  rows: AggregateRow[];
-  aggregate: AggregateMetrics;
+  rows: BatchRow[];
+  aggregate: BatchAggregateMetrics;
   scopeLabel: string;
 }
 

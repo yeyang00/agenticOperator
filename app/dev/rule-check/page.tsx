@@ -201,7 +201,6 @@ export default function RuleCheckDevPage() {
                           <details className="mt-1">
                             <summary className="cursor-pointer text-ink-3">rootCause</summary>
                             <div className="mt-1 space-y-1 pl-2 text-ink-2">
-                              <div><strong>规则要求:</strong> {r.llmParsed.rootCauseSections.ruleRequirement}</div>
                               <div><strong>数据观察:</strong> {r.llmParsed.rootCauseSections.dataObservation}</div>
                               <div><strong>对照推理:</strong> {r.llmParsed.rootCauseSections.contrastReasoning}</div>
                               <div><strong>结论:</strong> {r.llmParsed.rootCauseSections.conclusion}</div>

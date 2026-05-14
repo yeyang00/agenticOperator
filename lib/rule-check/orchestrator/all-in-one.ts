@@ -22,10 +22,16 @@
  *
  * Semantics locked this session:
  *   - LLM judges per-rule `decision`; code does cascade aggregate (B1), flow
- *     control short-circuit (B3), safety-net `pending_human` override (A2/A3),
- *     synthesized `not_started` for skipped rules (A4).
+ *     control short-circuit (B3), synthesized `not_started` for skipped rules.
  *   - No LLM-claimed `final_output` (notifications / terminal / aggregate);
  *     dropped in v1 per SPEC §15 (2026-05-13).
+ *
+ * v3.1 update (2026-05-13, SPEC §15):
+ *   `computeFinalDecision` now ONLY overrides on `parsed === null` (LLM
+ *   output unparseable). All other validation flags are informational; LLM's
+ *   decision is honored verbatim even if `ruleIdExists` / `schemaValid` /
+ *   `blockSemanticCheck` / `evidenceGrounded` fail. Validation failures are
+ *   still persisted to `validation.failures[]` for audit traceability.
  */
 
 import { v7 as uuidv7 } from "uuid";
@@ -696,6 +702,15 @@ function buildFallbackRun(opts: {
   };
 }
 
+/**
+ * v3.1 (locked 2026-05-13, SPEC §15): validation results are informational
+ * only. The ONLY code-side override is the degenerate `parsed === null` case
+ * (LLM output failed Zod schema → no decision exists to honor; pending_human
+ * is the only sensible fallback). All other validation flags
+ * (ruleIdExists / schemaValid per-field / blockSemanticCheck warning /
+ * evidenceGrounded) are persisted to `validation.failures[]` for audit but
+ * do NOT override `finalDecision`. Code does not replace the LLM as judge.
+ */
 function computeFinalDecision(
   parsed: RuleJudgmentAudited | null,
   validation: { overallOk: boolean; failures: string[] },
@@ -706,13 +721,10 @@ function computeFinalDecision(
       overrideReason: "llm_output_unparseable: " + validation.failures.join("; "),
     };
   }
-  if (validation.overallOk) {
-    return { decision: parsed.decision };
-  }
-  return {
-    decision: "pending_human",
-    overrideReason: "validation_failed: " + validation.failures.join("; "),
-  };
+  // Honor LLM's decision regardless of validation outcome. Failures are
+  // surfaced in `validation.failures[]` (audit) and `validation.*Ok` flags
+  // (UI L6 ValidationLight strip) — but never flip the decision.
+  return { decision: parsed.decision };
 }
 
 function buildInstanceFromRuntimeJob(job: Record<string, unknown>): Instance {

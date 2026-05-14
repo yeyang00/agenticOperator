@@ -19,16 +19,20 @@ import {
   replayRun as _replayRun,
   listMatrixCells as _listMatrixCells,
   listAggregateRuns as _listAggregateRuns,
+  listAggregateBatches as _listAggregateBatches,
   getRunPreview as _getRunPreview,
+  getBatchSummary as _getBatchSummary,
   listActiveRules as _listActiveRules,
 } from "@/lib/rule-check/server-actions";
 import type {
   CheckRuleInput,
+  CheckRulesInput,
   FetchedRuleClassified,
   Instance,
   RuleDecision,
   ValidationReport,
 } from "@/lib/rule-check";
+import type { BatchAggregateDecision } from "@/lib/rule-check/types-audited";
 
 // ─── Public types (mirror lib internals) ─────────────────────────────────
 
@@ -99,6 +103,89 @@ interface ListMatrixInput {
   toDate?: string;
 }
 
+interface ListAggregateBatchesInput {
+  client?: string;
+  actionRef?: string;
+  candidateId?: string;
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+}
+
+// ─── Batch-level public types (Path C v3) ────────────────────────────────
+
+export interface MainFieldDatum {
+  label: string;
+  value: string;
+}
+
+export interface BatchRow {
+  batchId: string;
+  timestamp: string;
+  candidateId: string;
+  jobRef?: string;
+  client: string;
+  actionRef: string;
+  decision: RuleDecision;
+  terminal: boolean;
+  terminalAtStep?: number;
+  ruleCount: number;
+  stepProgress: Array<{ stepKey: string; stepOrder: number; status: "ok" | "skipped" }>;
+}
+
+export interface BatchAggregateMetrics {
+  totalBatches: number;
+  passed: number;
+  blocked: number;
+  pending: number;
+  notStarted: number;
+  shortCircuited: number;
+  batchesPerDay: number[];
+}
+
+export interface BatchStepCallSlim {
+  stepOrder: number;
+  stepKey: string;
+  shortCircuited: boolean;
+  startedAt: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  model: string;
+  promptShaShort: string;
+  triggeredShortCircuit?: { byRuleId: string; reason: string };
+}
+
+export interface BatchRuleEntry {
+  runId: string;
+  ruleId: string;
+  ruleName: string;
+  sourceText: string;
+  decision: RuleDecision;
+  overrideReason?: string;
+  conclusionText: string;
+  dataObservationText: string;
+  contrastReasoningText: string;
+}
+
+export interface BatchStepGroup {
+  stepOrder: number;
+  stepKey: string;
+  rules: BatchRuleEntry[];
+}
+
+export interface BatchSummary {
+  batchId: string;
+  timestamp: string;
+  input: CheckRulesInput;
+  aggregateDecision: BatchAggregateDecision;
+  stepCalls: BatchStepCallSlim[];
+  candidateOverview: { instance: Instance | null; mainFields: MainFieldDatum[] };
+  jobOverview: { instance: Instance | null; mainFields: MainFieldDatum[] };
+  otherInstances: Instance[];
+  stepGroups: BatchStepGroup[];
+}
+
 // ─── Async wrappers ──────────────────────────────────────────────────────
 
 export async function replayRun(
@@ -132,4 +219,16 @@ export async function listActiveRules(input: {
   clientDepartment?: string;
 }): Promise<FetchedRuleClassified[]> {
   return _listActiveRules(input);
+}
+
+export async function listAggregateBatches(
+  input: ListAggregateBatchesInput,
+): Promise<{ rows: BatchRow[]; aggregate: BatchAggregateMetrics }> {
+  return _listAggregateBatches(input);
+}
+
+export async function getBatchSummary(
+  batchId: string,
+): Promise<{ ok: true; summary: BatchSummary } | { ok: false; error: string }> {
+  return _getBatchSummary(batchId);
 }
