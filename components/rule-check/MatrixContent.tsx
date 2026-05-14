@@ -43,8 +43,8 @@ export function MatrixContent({
     total === 0 ? "—" : `${Math.round((n / total) * 100)}%`;
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <header className="flex items-end justify-between">
+    <div className="flex flex-col h-full min-h-0 gap-4 p-6 overflow-y-auto">
+      <header className="flex items-end justify-between flex-shrink-0">
         <div>
           <h1 className="text-xl font-semibold text-ink-1">
             {t("rc_matrix_title")}

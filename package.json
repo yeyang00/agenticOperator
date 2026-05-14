@@ -16,7 +16,8 @@
     "simple-rule-check:seed:check": "node --env-file=.env.local --import tsx scripts/simple-rule-check-seed.ts --check-only",
     "rule-check": "node --env-file=.env.local --import tsx scripts/rule-check.ts",
     "rule-check:seed": "npm run simple-rule-check:seed",
-    "rule-check:seed:check": "npm run simple-rule-check:seed:check"
+    "rule-check:seed:check": "npm run simple-rule-check:seed:check",
+    "dev:dump-match-resume-prompt": "node --env-file=.env.local --import tsx scripts/dump-match-resume-prompt.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",

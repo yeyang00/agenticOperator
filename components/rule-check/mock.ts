@@ -177,10 +177,8 @@ export const MOCK_RUNS: RuleCheckRunAudited[] = [
         },
       ],
       rootCause:
-        "【规则要求】rule 10-7 要求 expected_salary_range 上限 ≤ max_salary_limit。【数据观察】Resume.expected_salary_range='50000-70000',Job.max_salary_limit=80000。【对照推理】期望上限 70000 ≤ 岗位上限 80000,且字段非空。【结论】因此判定 passed;不是 blocked 因为数据明确未触犯;不是 pending_human 因为薪资字段齐全无需人工。",
+        "【数据观察】Resume.expected_salary_range='50000-70000',Job.max_salary_limit=80000。【对照推理】期望上限 70000 ≤ 岗位上限 80000,且字段非空。【结论】因此判定 passed;不是 blocked 因为数据明确未触犯;不是 pending_human 因为薪资字段齐全无需人工。",
       rootCauseSections: {
-        ruleRequirement:
-          "rule 10-7 要求候选人 expected_salary_range 上限不得超过该岗位 max_salary_limit。",
         dataObservation:
           "Resume/R-MVP-002.expected_salary_range = '50000-70000';Job_Requisition/JR-MVP-TENCENT-001.max_salary_limit = 80000。",
         contrastReasoning:
@@ -311,10 +309,8 @@ export const MOCK_RUNS: RuleCheckRunAudited[] = [
         },
       ],
       rootCause:
-        "【规则要求】rule 10-17 禁止推荐曾在中软国际任职且离职编码为 A15 的候选人。【数据观察】Resume/R-MVP-003 中 work_experience[0].company='中软国际',departure_code='A15'。【对照推理】候选人精确满足『中软国际 + A15』组合,触发高风险回流规则。【结论】判定 blocked;不是 pending_human 因为数据齐全无歧义;不是 passed 因为明确触犯。",
+        "【数据观察】Resume/R-MVP-003 中 work_experience[0].company='中软国际',departure_code='A15'。【对照推理】候选人精确满足『中软国际 + A15』组合,触发高风险回流规则。【结论】判定 blocked;不是 pending_human 因为数据齐全无歧义;不是 passed 因为明确触犯。",
       rootCauseSections: {
-        ruleRequirement:
-          "rule 10-17 要求曾在中软国际任职且离职编码 = A15 的候选人禁止推荐。",
         dataObservation:
           "Resume/R-MVP-003.work_experience[0].company = '中软国际';Resume/R-MVP-003.work_experience[0].departure_code = 'A15'。",
         contrastReasoning:
@@ -427,9 +423,8 @@ export const MOCK_RUNS: RuleCheckRunAudited[] = [
         },
       ],
       rootCause:
-        "【规则要求】rule 10-25 …【数据观察】…(LLM cited an Application record that wasn't fetched)…【对照推理】…【结论】blocked",
+        "【数据观察】…(LLM cited an Application record that wasn't fetched)…【对照推理】…【结论】blocked",
       rootCauseSections: {
-        ruleRequirement: "(LLM 输出已被覆盖,详见原始 trace)",
         dataObservation: "(LLM 引用了未提取的 Application/APP-FAKE-001)",
         contrastReasoning: "(略)",
         conclusion: "(LLM 输出 blocked,但 evidence 未落地,系统强制 pending_human)",

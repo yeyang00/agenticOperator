@@ -30,9 +30,12 @@ export interface EvidenceAudited extends Evidence {
 
 // ─── Audit-rich RuleJudgment ──────────────────────────────────────────
 
+/**
+ * Three-section judgment basis. `ruleRequirement` removed 2026-05-13 per
+ * SPEC §15 — rule's original text is shown on the batch detail page; making
+ * the LLM re-emit it was redundant.
+ */
 export interface RootCauseSections {
-  /** 【规则要求】 */
-  ruleRequirement: string;
   /** 【数据观察】 */
   dataObservation: string;
   /** 【对照推理】 */

@@ -33,7 +33,7 @@
 import { fetchAction } from "../fetch";
 
 import { RUNTIME_INPUT_PLACEHOLDER } from "./assemble";
-import { assembleActionObjectV4_4 } from "./assemble-v4-4";
+import { assembleActionObjectV4_4, type ExtraInstance } from "./assemble-v4-4";
 import { fillRuntimeInput } from "./fill-runtime-input";
 import { findAdapterByAction } from "./runtime-adapters/registry";
 import type { RuntimeInputV4 } from "./runtime-adapters/types";
@@ -56,10 +56,23 @@ export interface GeneratePromptOptions {
   domain?: string;
   /** Runtime input. When omitted, the prompt retains placeholders unchanged. */
   runtimeInput?: RuntimeInputV4;
+  /**
+   * Optional prefetched Ontology instances (per-rule data dependencies resolved
+   * by `rule-check`'s 含义 A1 fetch layer). When non-empty, an extra
+   * `## 额外数据 (按 rule 依赖预取)` section is rendered between `## 运行时输入`
+   * and `## 最终输出 JSON 结构`. fetchedInstanceIndex begins at 2 (Job=0, Resume=1).
+   */
+  extraInstances?: ExtraInstance[];
   /** Override env. */
   apiBase?: string;
   apiToken?: string;
   timeoutMs?: number;
+  /**
+   * Path C: when set, the assembler produces a slim prompt scoped to the focus
+   * step only (`rule_judgments[]` output, no `final_output`). Omit for the
+   * Path B / full-envelope form used by `/dev/generate-prompt`.
+   */
+  focusStep?: number;
 }
 
 const DEFAULT_DOMAIN = "RAAS-v1";
@@ -91,6 +104,8 @@ export async function generatePrompt(
     client: opts.client,
     domain,
     runtimeInput: sentinel,
+    extraInstances: opts.extraInstances,
+    focusStep: opts.focusStep,
   });
 
   if (opts.runtimeInput === undefined) return obj;

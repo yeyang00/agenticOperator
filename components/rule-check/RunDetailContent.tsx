@@ -57,7 +57,8 @@ export function RunDetailContent({ run }: RunDetailContentProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-6 max-w-[1100px] mx-auto">
+    <div className="flex flex-col h-full min-h-0 overflow-y-auto">
+      <div className="flex flex-col gap-4 p-6 max-w-[1100px] mx-auto w-full">
       {/* ── Layer 1: Verdict hero ───────────────────────────────── */}
       <Card>
         <div id="layer-1" className="p-4 flex items-center gap-6">
@@ -285,6 +286,7 @@ export function RunDetailContent({ run }: RunDetailContentProps) {
           </aside>
         </div>
       )}
+      </div>
     </div>
   );
 }

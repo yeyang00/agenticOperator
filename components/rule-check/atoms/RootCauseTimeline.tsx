@@ -18,13 +18,9 @@ export interface RootCauseTimelineProps {
   >;
 }
 
+// `ruleRequirement` band removed 2026-05-13 — RootCauseSections is now
+// three-segment (dataObservation / contrastReasoning / conclusion).
 const BANDS = [
-  {
-    key: "ruleRequirement" as const,
-    title: "【规则要求】",
-    color: "var(--c-info)",
-    bg: "var(--c-info-bg)",
-  },
   {
     key: "dataObservation" as const,
     title: "【数据观察】",

@@ -5,6 +5,14 @@
  *
  * Unlike the MVP aggregator, this one runs per-judgment (the orchestrator
  * iterates over the LLM's `judgments[]` array).
+ *
+ * Q4 lenient (locked 2026-05-13, SPEC §15):
+ *   `evidenceGrounded` is computed and persisted to audit (per-evidence
+ *   `grounded: true|false` + failure tags) but no longer gates `overallOk`.
+ *   Rationale: byte-equal grounding has false positives (formatting / locale
+ *   differences) and treating it as a hard override of the LLM's decision was
+ *   over-reaching. The signal stays in the audit JSON for quality analysis;
+ *   it just doesn't auto-flip judgments to `pending_human` anymore.
  */
 
 import { rcDebug } from "../debug";
@@ -89,9 +97,9 @@ export function runValidationAudited(
     failures.push(...r.failures);
   }
 
+  // Q4 lenient: evidenceResult.ok is NOT in this conjunction; see file docstring.
   const overallOk =
     ruleIdResult.ok &&
-    evidenceResult.ok &&
     schemaResult.ok &&
     blockOutcome !== "warning";
 

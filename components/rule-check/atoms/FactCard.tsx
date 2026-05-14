@@ -51,12 +51,26 @@ export function FactCard({
   onToggle,
 }: FactCardProps) {
   const border = borderStyle(evidence);
+  // Outer element is a `<div role="button">` rather than a native `<button>`
+  // because the expanded body contains interactive children (<a> to Neo4j
+  // Browser + <button> Copy Cypher in VerifyActions). HTML forbids nested
+  // interactive elements; React 19 / Next 16 surface that as a hydration
+  // error. ARIA semantics + keyboard activation preserved manually below;
+  // inner elements already have `stopPropagation` so toggle bubble is OK.
+  // SPEC §15 row "FactCard hydration fix" — 2026-05-13.
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onToggle}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
       aria-expanded={expanded}
-      className="text-left bg-surface shadow-sh-1 rounded-lg overflow-hidden transition-all"
+      className="text-left bg-surface shadow-sh-1 rounded-lg overflow-hidden transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent"
       style={{
         ...border,
         width: expanded ? 400 : 200,
@@ -128,7 +142,7 @@ export function FactCard({
           </Section>
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
